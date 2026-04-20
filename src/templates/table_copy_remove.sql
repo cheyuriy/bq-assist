@@ -1,0 +1,1 @@
+DROP TABLE `{{bigquery_project}}.{{bigquery_dataset}}.{{bigquery_table}}`;
