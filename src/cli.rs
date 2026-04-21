@@ -164,6 +164,10 @@ You can restore it using:\n\
 
     /// Show different table statistics and information. Skip command name to see basic report
     Stats {
+        /// Include the table DDL in the report
+        #[arg(long)]
+        with_ddl: bool,
+
         #[command(subcommand)]
         command: Option<StatsSubcommands>,
     },

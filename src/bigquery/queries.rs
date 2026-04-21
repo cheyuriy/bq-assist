@@ -685,3 +685,86 @@ impl CommonQueries {
         rendered
     }
 }
+
+pub struct StatsQueries;
+
+impl StatsQueries {
+    pub fn table_info(project: &str, dataset: &str, table: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_table_info.sql").unwrap();
+        let context = context! {
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+            bigquery_table => table,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn table_options(project: &str, dataset: &str, table: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_table_options.sql").unwrap();
+        let context = context! {
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+            bigquery_table => table,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn table_storage(region: &str, project: &str, dataset: &str, table: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_table_storage.sql").unwrap();
+        let context = context! {
+            region => region,
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+            bigquery_table => table,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn dataset_billing_mode(region: &str, project: &str, dataset: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_dataset_billing.sql").unwrap();
+        let context = context! {
+            region => region,
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn partitions(project: &str, dataset: &str, table: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_partitions.sql").unwrap();
+        let context = context! {
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+            bigquery_table => table,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn child_snapshots(region: &str, project: &str, dataset: &str, table: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_child_snapshots.sql").unwrap();
+        let context = context! {
+            region => region,
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+            bigquery_table => table,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn child_clones(project: &str, dataset: &str, table: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_child_clones.sql").unwrap();
+        let context = context! {
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+            bigquery_table => table,
+        };
+        template.render(context).unwrap()
+    }
+}

@@ -48,7 +48,7 @@ Operations on a specific table.
 | `options <option> <value>` | Set a table option (use `NULL` to remove) |
 | `queries read` | List queries that read from this table |
 | `queries modify` | List queries that modified this table |
-| `stats` | Show table statistics and information |
+| `stats [--with-ddl]` | Show a full report: type, size, partitioning, clustering, options. Add `--with-ddl` to include the table DDL. |
 | `stats columns <name>` | Detailed statistics for a specific column |
 | `archive add` | Archive the table (one-time or periodic) |
 | `rename <new-name>` | Rename the table |
@@ -252,6 +252,12 @@ bq-assist merge my_dataset.prod_table my_dataset.staging_table upsert id
 
 # Append only new rows (insert missing)
 bq-assist merge my_dataset.target my_dataset.source insert id
+
+# Show a full stats report for a table
+bq-assist table my_dataset.my_table stats
+
+# Show stats report including DDL
+bq-assist table my_dataset.my_table stats --with-ddl
 
 # Show queries that read from a table in the last 6 hours
 bq-assist table my_dataset.my_table queries read --period 6h

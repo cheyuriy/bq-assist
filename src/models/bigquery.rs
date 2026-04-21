@@ -583,6 +583,74 @@ pub mod queries {
     }
 }
 
+pub mod stats {
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub enum BillingMode {
+        Logical,
+        Physical,
+    }
+
+    impl BillingMode {
+        pub fn parse(s: &str) -> Self {
+            match s.trim_matches('"').to_uppercase().as_str() {
+                "PHYSICAL" => BillingMode::Physical,
+                _ => BillingMode::Logical,
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct ExternalInfo {
+        pub file_format: Option<String>,
+        pub uris: Vec<String>,
+    }
+
+    #[derive(Debug)]
+    pub struct BasicInfo {
+        pub fqn: String,
+        pub table_type: String,
+        pub created: Option<chrono::DateTime<chrono::Utc>>,
+        pub updated: Option<chrono::DateTime<chrono::Utc>>,
+        pub origin: Option<String>,
+        pub external: Option<ExternalInfo>,
+        pub snapshots: Vec<String>,
+        pub clones: Vec<String>,
+    }
+
+    #[derive(Debug)]
+    pub struct SizeInfo {
+        pub total_rows: i64,
+        pub active_logical: i64,
+        pub long_term_logical: i64,
+        pub total_logical: i64,
+        pub active_physical: i64,
+        pub long_term_physical: i64,
+        pub total_physical: i64,
+        pub time_travel: i64,
+        pub billing_mode: BillingMode,
+    }
+
+    #[derive(Debug)]
+    pub struct PartitioningInfo {
+        pub column: Option<String>,
+        pub clause: Option<String>,
+        pub partitions_count: Option<u64>,
+        pub avg_partition_bytes: Option<i64>,
+        pub require_partition_filter: Option<bool>,
+    }
+
+    #[derive(Debug)]
+    pub struct ClusteringInfo {
+        pub fields: Vec<String>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct OtherOption {
+        pub name: String,
+        pub value: String,
+    }
+}
+
 pub mod snapshot {
     use tabled::Tabled;
 

@@ -158,14 +158,13 @@ async fn main() {
                 }
             },
 
-            cli::TableSubcommands::Stats { command } => match command {
+            cli::TableSubcommands::Stats { with_ddl, command } => match command {
                 Some(cli::StatsSubcommands::Columns { name }) => {
                     println!("table {table_ref} stats columns {name}");
                     // TODO: implement stats columns command
                 }
                 None => {
-                    println!("table {table_ref} stats columns");
-                    // TODO: implement stats command
+                    commands::table::stats::report(config, &table_ref, with_ddl).await;
                 }
             },
 
