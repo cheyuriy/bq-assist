@@ -767,4 +767,106 @@ impl StatsQueries {
         };
         template.render(context).unwrap()
     }
+
+    pub fn column_info(project: &str, dataset: &str, table: &str, column: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_column_info.sql").unwrap();
+        let context = context! {
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+            bigquery_table => table,
+            bigquery_column => column,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn column_numeric(
+        project: &str,
+        dataset: &str,
+        table: &str,
+        column: &str,
+        bins_number: u32,
+    ) -> String {
+        let env = setup();
+        let template = env.get_template("stats_column_numeric.sql").unwrap();
+        let context = context! {
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+            bigquery_table => table,
+            bigquery_column => column,
+            bins_number => bins_number,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn column_string(project: &str, dataset: &str, table: &str, column: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_column_string.sql").unwrap();
+        let context = context! {
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+            bigquery_table => table,
+            bigquery_column => column,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn column_datetime(
+        project: &str,
+        dataset: &str,
+        table: &str,
+        column: &str,
+        time_bins: &str,
+        is_time: bool,
+        trunc_fn: &str,
+    ) -> String {
+        let env = setup();
+        let template = env.get_template("stats_column_datetime.sql").unwrap();
+        let context = context! {
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+            bigquery_table => table,
+            bigquery_column => column,
+            time_bins => time_bins,
+            is_time => is_time,
+            trunc_fn => trunc_fn,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn column_boolean(project: &str, dataset: &str, table: &str, column: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_column_boolean.sql").unwrap();
+        let context = context! {
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+            bigquery_table => table,
+            bigquery_column => column,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn column_generic(project: &str, dataset: &str, table: &str, column: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_column_generic.sql").unwrap();
+        let context = context! {
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+            bigquery_table => table,
+            bigquery_column => column,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn column_frequency(project: &str, dataset: &str, table: &str, column: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_column_frequency.sql").unwrap();
+        let context = context! {
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+            bigquery_table => table,
+            bigquery_column => column,
+        };
+        template.render(context).unwrap()
+    }
 }

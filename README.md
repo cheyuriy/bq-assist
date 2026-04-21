@@ -49,9 +49,40 @@ Operations on a specific table.
 | `queries read` | List queries that read from this table |
 | `queries modify` | List queries that modified this table |
 | `stats [--with-ddl]` | Show a full report: type, size, partitioning, clustering, options. Add `--with-ddl` to include the table DDL. |
-| `stats columns <name>` | Detailed statistics for a specific column |
+| `stats column <name> [flags]` | Detailed statistics for a specific column (see below) |
 | `archive add` | Archive the table (one-time or periodic) |
 | `rename <new-name>` | Rename the table |
+
+#### `stats column <name>`
+
+Shows metadata and optional data statistics for a single column.
+
+**Phase 1 — always runs (no table scan):**
+- Column type, nullability
+- Clustering position (if the column is a clustering key)
+- Partitioning (if the column is the partition column)
+
+**Phase 2 — deep scan (reads the full table):**
+
+Prompted interactively unless `--deep` is passed. Runs one table scan and reports:
+
+- Proportion of `NULL` values
+- Type-specific statistics:
+  - **Numeric** (`INT64`, `FLOAT64`, `NUMERIC`, `BIGNUMERIC`, and aliases): min, max, average, and a bucket histogram
+  - **String** (`STRING`, `BYTES`): min, max, and average length
+  - **Datetime** (`DATETIME`, `TIMESTAMP`, `DATE`): earliest and latest value, plus a distribution grouped by time period
+  - **Time** (`TIME`): earliest and latest value, distribution grouped by hour
+  - **Boolean** (`BOOL`): proportion of `TRUE` values (excluding `NULL`)
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--deep` | — | Skip the cost confirmation prompt |
+| `--bins-number <N>` | `10` | Number of equal-width buckets in numeric distributions |
+| `--time-bins <granularity>` | `month` | Time distribution granularity: `hour`, `day`, `week`, `month`, `year` |
+| `--as-category` | — | Treat the column as categorical: show distinct count and, if there are few enough distinct values, a frequency table. Not available for `BOOL`. |
+| `--distribution-limit <N>` | `20` | Maximum number of distinct values before the frequency table is suppressed |
 
 **Known table options:** `expiration_timestamp`, `partition_expiration_days`, `require_partition_filter`, `kms_key_name`, `friendly_name`, `description`, `labels`, `default_rounding_mode`, `enable_change_history`, `max_staleness`, `enable_fine_grained_mutations`, `storage_uri`, `file_format`, `table_format`, `tags`
 
@@ -258,6 +289,24 @@ bq-assist table my_dataset.my_table stats
 
 # Show stats report including DDL
 bq-assist table my_dataset.my_table stats --with-ddl
+
+# Show column metadata (type, clustering, partitioning) — no table scan
+bq-assist table my_dataset.my_table stats column event_time
+
+# Show full column statistics, skipping the cost prompt
+bq-assist table my_dataset.my_table stats column event_time --deep
+
+# Numeric column with 20 histogram buckets
+bq-assist table my_dataset.my_table stats column revenue --deep --bins-number 20
+
+# Datetime column with daily distribution
+bq-assist table my_dataset.my_table stats column created_at --deep --time-bins day
+
+# Treat a string column as categorical (distinct count + frequency table)
+bq-assist table my_dataset.my_table stats column status --deep --as-category
+
+# Categorical with a higher frequency table limit
+bq-assist table my_dataset.my_table stats column country --deep --as-category --distribution-limit 50
 
 # Show queries that read from a table in the last 6 hours
 bq-assist table my_dataset.my_table queries read --period 6h

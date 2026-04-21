@@ -2,7 +2,7 @@ use crate::errors::ArgumentsParsingError;
 use crate::models::bigquery;
 use crate::models::schema::{DatasetRef, TableRef};
 use chrono;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -379,13 +379,39 @@ If both `from` and `to` are present, then we ignore this argument.\
     },
 }
 
+#[derive(ValueEnum, Clone, Debug, Default)]
+pub enum TimeBins {
+    Hour,
+    Day,
+    Week,
+    #[default]
+    Month,
+    Year,
+}
+
 #[derive(Subcommand, Debug)]
 #[command(disable_help_subcommand = true)]
 pub enum StatsSubcommands {
-    /// Show more detailed information about a specific column
-    Columns {
+    /// Show statistics for a specific column
+    #[command(name = "column")]
+    Column {
         /// Column name
         name: String,
+        /// Skip cost confirmation and run deep scan immediately
+        #[arg(long)]
+        deep: bool,
+        /// Number of equal-width buckets for numeric distributions
+        #[arg(long, default_value = "10")]
+        bins_number: u32,
+        /// Time granularity for datetime distributions
+        #[arg(long, default_value = "month", ignore_case = true)]
+        time_bins: TimeBins,
+        /// Treat column values as categories (distinct count + frequency table)
+        #[arg(long)]
+        as_category: bool,
+        /// Max distinct values to show frequency table
+        #[arg(long, default_value = "20")]
+        distribution_limit: u64,
     },
 }
 

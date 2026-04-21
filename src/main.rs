@@ -159,9 +159,25 @@ async fn main() {
             },
 
             cli::TableSubcommands::Stats { with_ddl, command } => match command {
-                Some(cli::StatsSubcommands::Columns { name }) => {
-                    println!("table {table_ref} stats columns {name}");
-                    // TODO: implement stats columns command
+                Some(cli::StatsSubcommands::Column {
+                    name,
+                    deep,
+                    bins_number,
+                    time_bins,
+                    as_category,
+                    distribution_limit,
+                }) => {
+                    commands::table::stats::column(
+                        config,
+                        &table_ref,
+                        &name,
+                        deep,
+                        bins_number,
+                        time_bins,
+                        as_category,
+                        distribution_limit,
+                    )
+                    .await;
                 }
                 None => {
                     commands::table::stats::report(config, &table_ref, with_ddl).await;
