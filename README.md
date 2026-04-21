@@ -40,41 +40,52 @@ Operations on a specific table.
 | `columns remove <name>` | Delete a column |
 | `restore` | Restore table from time-travel, tracked copy, snapshot, or archive |
 | `snapshots` | List tracked snapshots |
-| `snapshots add [name]` | Create (and track) a snapshot |
+| `snapshots add [name]` | Create (and track) a snapshot — see flags below |
 | `snapshots remove <name\|id\|*>` | Delete a tracked snapshot |
 | `copy` | List tracked copies |
-| `copy add [name]` | Create (and track) a copy |
+| `copy add [name]` | Create (and track) a copy — see flags below |
 | `copy remove <name\|id\|*>` | Delete a tracked copy |
 | `options <option> <value>` | Set a table option (use `NULL` to remove) |
-| `queries read` | List queries that read from this table |
-| `queries modify` | List queries that modified this table |
+| `queries read` | List queries that read from this table — see flags below |
+| `queries modify` | List queries that modified this table — see flags below |
 | `stats [--with-ddl]` | Show a full report: type, size, partitioning, clustering, options. Add `--with-ddl` to include the table DDL. |
-| `stats column <name> [flags]` | Detailed statistics for a specific column (see below) |
+| `stats column <name> [flags]` | Show column metadata and optional deep statistics — see flags below |
 | `archive add` | Archive the table (one-time or periodic) |
 | `rename <new-name>` | Rename the table |
 
+> **Known `options` values:** `expiration_timestamp`, `partition_expiration_days`, `require_partition_filter`, `kms_key_name`, `friendly_name`, `description`, `labels`, `default_rounding_mode`, `enable_change_history`, `max_staleness`, `enable_fine_grained_mutations`, `storage_uri`, `file_format`, `table_format`, `tags`
+
+#### `snapshots add [name]`
+
+| Flag | Description |
+|---|---|
+| `--dataset <dataset>` | Dataset to store the snapshot (defaults to the table's dataset) |
+| `--rewind <duration>` | Capture state from N time ago (e.g. `2h`, `30m`) |
+| `--timestamp <datetime>` | Exact snapshot timestamp in RFC3339 format |
+| `--no-track` | Create without tracking (snapshot won't appear in `snapshots` list) |
+
+#### `copy add [name]`
+
+| Flag | Description |
+|---|---|
+| `--dataset <dataset>` | Dataset to store the copy (defaults to the table's dataset) |
+| `--no-track` | Create without tracking |
+
+#### `queries read` / `queries modify`
+
+| Flag | Default | Description |
+|---|---|---|
+| `--period <duration>` | `1h` | Lookback window (e.g. `6h`, `2d`) |
+| `--from <datetime>` | — | Period start in RFC3339 format |
+| `--to <datetime>` | — | Period end in RFC3339 format (`--from` and `--to` together override `--period`) |
+| `--user <email>` | — | Filter by user email |
+| `--limit <N>` | `50` | Maximum results |
+| `--single` *(read only)* | — | Only queries referencing this table exclusively |
+| `--related` *(modify only)* | — | Include indirect references, not just direct writes |
+
 #### `stats column <name>`
 
-Shows metadata and optional data statistics for a single column.
-
-**Phase 1 — always runs (no table scan):**
-- Column type, nullability
-- Clustering position (if the column is a clustering key)
-- Partitioning (if the column is the partition column)
-
-**Phase 2 — deep scan (reads the full table):**
-
-Prompted interactively unless `--deep` is passed. Runs one table scan and reports:
-
-- Proportion of `NULL` values
-- Type-specific statistics:
-  - **Numeric** (`INT64`, `FLOAT64`, `NUMERIC`, `BIGNUMERIC`, and aliases): min, max, average, and a bucket histogram
-  - **String** (`STRING`, `BYTES`): min, max, and average length
-  - **Datetime** (`DATETIME`, `TIMESTAMP`, `DATE`): earliest and latest value, plus a distribution grouped by time period
-  - **Time** (`TIME`): earliest and latest value, distribution grouped by hour
-  - **Boolean** (`BOOL`): proportion of `TRUE` values (excluding `NULL`)
-
-**Flags:**
+Shows column metadata without a table scan (type, nullability, clustering/partitioning role). Pass `--deep` to also run a full table scan and report type-specific statistics: distributions and histograms for numeric and datetime columns, length stats for strings, true/false ratio for booleans. You will be prompted for confirmation before the scan unless `--deep` is passed.
 
 | Flag | Default | Description |
 |---|---|---|
@@ -84,8 +95,6 @@ Prompted interactively unless `--deep` is passed. Runs one table scan and report
 | `--as-category` | — | Treat the column as categorical: show distinct count and, if there are few enough distinct values, a frequency table. Not available for `BOOL`. |
 | `--distribution-limit <N>` | `20` | Maximum number of distinct values before the frequency table is suppressed |
 
-**Known table options:** `expiration_timestamp`, `partition_expiration_days`, `require_partition_filter`, `kms_key_name`, `friendly_name`, `description`, `labels`, `default_rounding_mode`, `enable_change_history`, `max_staleness`, `enable_fine_grained_mutations`, `storage_uri`, `file_format`, `table_format`, `tags`
-
 ### `dataset <DATASET> ...`
 
 | Subcommand | Description |
@@ -93,7 +102,7 @@ Prompted interactively unless `--deep` is passed. Runs one table scan and report
 | `options <option> <value>` | Set a dataset option (use `NULL` to remove) |
 | `stats` | Show dataset statistics |
 
-**Known dataset options:** `default_kms_key_name`, `default_partition_expiration_days`, `default_rounding_mode`, `default_table_expiration_days`, `description`, `failover_reservation`, `friendly_name`, `is_case_insensitive`, `is_primary`, `labels`, `max_time_travel_hours`, `primary_replica`, `storage_billing_model`, `tags`
+> **Known `options` values:** `default_kms_key_name`, `default_partition_expiration_days`, `default_rounding_mode`, `default_table_expiration_days`, `description`, `failover_reservation`, `friendly_name`, `is_case_insensitive`, `is_primary`, `labels`, `max_time_travel_hours`, `primary_replica`, `storage_billing_model`, `tags`
 
 ### `merge <LEFT> <RIGHT> [DESTINATION] ...`
 
@@ -278,6 +287,9 @@ bq-assist table my_dataset.my_table restore --snapshot before_migration
 # Restore using time-travel (rewind 30 minutes)
 bq-assist table my_dataset.my_table restore --rewind 30m
 
+# Create a tracked copy
+bq-assist table my_dataset.my_table copy add pre_deploy
+
 # Upsert from a staging table into production
 bq-assist merge my_dataset.prod_table my_dataset.staging_table upsert id
 
@@ -290,23 +302,8 @@ bq-assist table my_dataset.my_table stats
 # Show stats report including DDL
 bq-assist table my_dataset.my_table stats --with-ddl
 
-# Show column metadata (type, clustering, partitioning) — no table scan
-bq-assist table my_dataset.my_table stats column event_time
-
-# Show full column statistics, skipping the cost prompt
+# Show column statistics with a full deep scan
 bq-assist table my_dataset.my_table stats column event_time --deep
-
-# Numeric column with 20 histogram buckets
-bq-assist table my_dataset.my_table stats column revenue --deep --bins-number 20
-
-# Datetime column with daily distribution
-bq-assist table my_dataset.my_table stats column created_at --deep --time-bins day
-
-# Treat a string column as categorical (distinct count + frequency table)
-bq-assist table my_dataset.my_table stats column status --deep --as-category
-
-# Categorical with a higher frequency table limit
-bq-assist table my_dataset.my_table stats column country --deep --as-category --distribution-limit 50
 
 # Show queries that read from a table in the last 6 hours
 bq-assist table my_dataset.my_table queries read --period 6h
@@ -314,8 +311,14 @@ bq-assist table my_dataset.my_table queries read --period 6h
 # Show queries made by a specific user
 bq-assist table my_dataset.my_table queries read --user analyst@example.com
 
+# Show queries that modified a table in the last day
+bq-assist table my_dataset.my_table queries modify --period 24h
+
 # Compare two tables
 bq-assist compare my_dataset.table_v1 my_dataset.table_v2
+
+# Compare current table state against a tracked snapshot
+bq-assist compare my_dataset.my_table my_dataset.my_table --left-snapshot before_migration
 
 # Set dataset time-travel window to 48 hours
 bq-assist dataset my_dataset options max_time_travel_hours 48
