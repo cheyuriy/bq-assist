@@ -1,16 +1,15 @@
 use crate::bigquery::client;
+use crate::bigquery::executor;
 use crate::bigquery::queries;
 use crate::models::bigquery::options::TableOption;
 use crate::models::config::AppConfig;
 use crate::models::schema::TableRef;
 use google_cloud_bigquery::http::error;
-use google_cloud_bigquery::http::job::query::QueryRequest;
 use google_cloud_bigquery::http::job::{
     CreateDisposition, Job, JobConfiguration, JobConfigurationSourceTable,
     JobConfigurationTableCopy, JobReference, JobType, OperationType, WriteDisposition,
 };
 use google_cloud_bigquery::http::table::TableReference;
-use google_cloud_bigquery::query::row::Row;
 use std::time::Duration;
 
 pub async fn rename(config: AppConfig, table_ref: &TableRef, new_name: &str) {
@@ -26,20 +25,7 @@ pub async fn rename(config: AppConfig, table_ref: &TableRef, new_name: &str) {
         new_name,
     );
 
-    let request = QueryRequest {
-        query: ddl_query,
-        ..Default::default()
-    };
-
-    let mut iter = bq_client
-        .query::<Row>(project_id.as_str(), request)
-        .await
-        .unwrap();
-
-    while let Some(row) = iter.next().await.unwrap() {
-        let data = row.column::<String>(0);
-        println!("{data:?}");
-    }
+    executor::execute(&bq_client, &project_id, ddl_query).await;
 }
 
 pub async fn set_option(
@@ -66,20 +52,7 @@ pub async fn set_option(
         option_value,
     );
 
-    let request = QueryRequest {
-        query: option_query,
-        ..Default::default()
-    };
-
-    let mut iter = bq_client
-        .query::<Row>(project_id.as_str(), request)
-        .await
-        .unwrap();
-
-    while let Some(row) = iter.next().await.unwrap() {
-        let data = row.column::<String>(0);
-        println!("{data:?}");
-    }
+    executor::execute(&bq_client, &project_id, option_query).await;
 }
 
 pub async fn restore(
@@ -127,20 +100,7 @@ pub async fn restore(
                 duration,
             );
 
-            let request = QueryRequest {
-                query: rewind_query,
-                ..Default::default()
-            };
-
-            let mut iter = bq_client
-                .query::<Row>(project_id.as_str(), request)
-                .await
-                .unwrap();
-
-            while let Some(row) = iter.next().await.unwrap() {
-                let data = row.column::<String>(0);
-                println!("{data:?}");
-            }
+            executor::execute(&bq_client, &project_id, rewind_query).await;
         }
     } else {
         println!("Table doesn't exist");

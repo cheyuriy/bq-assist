@@ -1,12 +1,39 @@
 use crate::bigquery::client;
+use crate::bigquery::executor;
 use crate::bigquery::queries;
 use crate::models::bigquery::columns::{ColumnMetadata, Type};
 use crate::models::config::AppConfig;
 use crate::models::schema::TableRef;
-use google_cloud_bigquery::http::job::query::QueryRequest;
-use google_cloud_bigquery::query::row::Row;
 use tabled::Table;
 use tokio::time::{Duration, sleep};
+
+fn map_column_row(row: google_cloud_bigquery::query::row::Row) -> ColumnMetadata {
+    ColumnMetadata::new(
+        row.column::<String>(3).unwrap().as_str(),
+        row.column::<String>(4).unwrap().parse::<u8>().unwrap(),
+        row.column::<String>(5).unwrap().as_str(),
+        row.column::<String>(6).unwrap().as_str(),
+        row.column::<String>(10).unwrap().as_str(),
+        row.column::<String>(13).unwrap().as_str(),
+        match row.column::<String>(14) {
+            Ok(v) => match v.parse::<u8>() {
+                Ok(r) => Some(r),
+                Err(_) => None,
+            },
+            Err(_) => None,
+        },
+        match row.column::<String>(16) {
+            Ok(v) => {
+                if v != "NULL" {
+                    Some(v)
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        },
+    )
+}
 
 pub async fn list(config: AppConfig, table_ref: &TableRef) {
     let (bq_client, project_id) = match client::get_client(&config).await {
@@ -24,46 +51,7 @@ pub async fn list(config: AppConfig, table_ref: &TableRef) {
         None,
     );
 
-    let request = QueryRequest {
-        query: query,
-        ..Default::default()
-    };
-
-    let mut iter = bq_client
-        .query::<Row>(project_id.as_str(), request)
-        .await
-        .unwrap();
-
-    let mut columns: Vec<ColumnMetadata> = Vec::new();
-    while let Some(row) = iter.next().await.unwrap() {
-        let column = ColumnMetadata::new(
-            row.column::<String>(3).unwrap().as_str(),
-            row.column::<String>(4).unwrap().parse::<u8>().unwrap(),
-            row.column::<String>(5).unwrap().as_str(),
-            row.column::<String>(6).unwrap().as_str(),
-            row.column::<String>(10).unwrap().as_str(),
-            row.column::<String>(13).unwrap().as_str(),
-            match row.column::<String>(14) {
-                Ok(v) => match v.parse::<u8>() {
-                    Ok(r) => Some(r),
-                    Err(_) => None,
-                },
-                Err(_) => None,
-            },
-            match row.column::<String>(16) {
-                Ok(v) => {
-                    if v != "NULL" {
-                        Some(v)
-                    } else {
-                        None
-                    }
-                }
-                Err(_) => None,
-            },
-        );
-
-        columns.push(column);
-    }
+    let columns = executor::query_collect(&bq_client, &project_id, query, map_column_row).await;
 
     let table = Table::new(columns);
     println!("{}", table);
@@ -94,20 +82,7 @@ pub async fn add(
         default_value,
     );
 
-    let request = QueryRequest {
-        query: query,
-        ..Default::default()
-    };
-
-    let mut iter = bq_client
-        .query::<Row>(project_id.as_str(), request)
-        .await
-        .unwrap();
-
-    while let Some(row) = iter.next().await.unwrap() {
-        let data = row.column::<String>(0);
-        println!("{data:?}");
-    }
+    executor::execute(&bq_client, &project_id, query).await;
 }
 
 pub async fn remove(config: AppConfig, table_ref: &TableRef, name: &str) {
@@ -123,20 +98,7 @@ pub async fn remove(config: AppConfig, table_ref: &TableRef, name: &str) {
         name,
     );
 
-    let request = QueryRequest {
-        query: query,
-        ..Default::default()
-    };
-
-    let mut iter = bq_client
-        .query::<Row>(project_id.as_str(), request)
-        .await
-        .unwrap();
-
-    while let Some(row) = iter.next().await.unwrap() {
-        let data = row.column::<String>(0);
-        println!("{data:?}");
-    }
+    executor::execute(&bq_client, &project_id, query).await;
 }
 
 pub async fn rename(config: AppConfig, table_ref: &TableRef, name: &str, new_name: &str) {
@@ -152,45 +114,9 @@ pub async fn rename(config: AppConfig, table_ref: &TableRef, name: &str, new_nam
         Some(name.to_string()),
     );
 
-    let request = QueryRequest {
-        query: column_query,
-        ..Default::default()
-    };
-
-    let mut iter = bq_client
-        .query::<Row>(project_id.as_str(), request)
+    let column = executor::query_first(&bq_client, &project_id, column_query, map_column_row)
         .await
-        .unwrap();
-
-    let column = if let Some(row) = iter.next().await.unwrap() {
-        ColumnMetadata::new(
-            row.column::<String>(3).unwrap().as_str(),
-            row.column::<String>(4).unwrap().parse::<u8>().unwrap(),
-            row.column::<String>(5).unwrap().as_str(),
-            row.column::<String>(6).unwrap().as_str(),
-            row.column::<String>(10).unwrap().as_str(),
-            row.column::<String>(13).unwrap().as_str(),
-            match row.column::<String>(14) {
-                Ok(v) => match v.parse::<u8>() {
-                    Ok(r) => Some(r),
-                    Err(_) => None,
-                },
-                Err(_) => None,
-            },
-            match row.column::<String>(16) {
-                Ok(v) => {
-                    if v != "NULL" {
-                        Some(v)
-                    } else {
-                        None
-                    }
-                }
-                Err(_) => None,
-            },
-        )
-    } else {
-        panic!("Can't find metadata about that column");
-    };
+        .unwrap_or_else(|| panic!("Can't find metadata about that column"));
 
     println!("{column:?}");
 
@@ -204,20 +130,7 @@ pub async fn rename(config: AppConfig, table_ref: &TableRef, name: &str, new_nam
         column.column_default,
     );
 
-    let request = QueryRequest {
-        query: rename_query,
-        ..Default::default()
-    };
-
-    let mut iter = bq_client
-        .query::<Row>(project_id.as_str(), request)
-        .await
-        .unwrap();
-
-    while let Some(row) = iter.next().await.unwrap() {
-        let data = row.column::<String>(0);
-        println!("{data:?}");
-    }
+    executor::execute(&bq_client, &project_id, rename_query).await;
 }
 
 pub async fn cast(config: AppConfig, table_ref: &TableRef, name: &str, field_type: &Type) {
@@ -233,45 +146,9 @@ pub async fn cast(config: AppConfig, table_ref: &TableRef, name: &str, field_typ
         Some(name.to_string()),
     );
 
-    let request = QueryRequest {
-        query: column_query,
-        ..Default::default()
-    };
-
-    let mut iter = bq_client
-        .query::<Row>(project_id.as_str(), request)
+    let column = executor::query_first(&bq_client, &project_id, column_query, map_column_row)
         .await
-        .unwrap();
-
-    let column = if let Some(row) = iter.next().await.unwrap() {
-        ColumnMetadata::new(
-            row.column::<String>(3).unwrap().as_str(),
-            row.column::<String>(4).unwrap().parse::<u8>().unwrap(),
-            row.column::<String>(5).unwrap().as_str(),
-            row.column::<String>(6).unwrap().as_str(),
-            row.column::<String>(10).unwrap().as_str(),
-            row.column::<String>(13).unwrap().as_str(),
-            match row.column::<String>(14) {
-                Ok(v) => match v.parse::<u8>() {
-                    Ok(r) => Some(r),
-                    Err(_) => None,
-                },
-                Err(_) => None,
-            },
-            match row.column::<String>(16) {
-                Ok(v) => {
-                    if v != "NULL" {
-                        Some(v)
-                    } else {
-                        None
-                    }
-                }
-                Err(_) => None,
-            },
-        )
-    } else {
-        panic!("Can't find metadata about that column");
-    };
+        .unwrap_or_else(|| panic!("Can't find metadata about that column"));
 
     // BigQuery limits number of DDL and DML jobs per table (5 per 10 seconds per table by default)
     // However, casting column to another type needs more than 5 operations
@@ -285,20 +162,7 @@ pub async fn cast(config: AppConfig, table_ref: &TableRef, name: &str, field_typ
         &field_type,
     );
 
-    let request = QueryRequest {
-        query: first_query,
-        ..Default::default()
-    };
-
-    let mut iter = bq_client
-        .query::<Row>(project_id.as_str(), request)
-        .await
-        .unwrap();
-
-    while let Some(row) = iter.next().await.unwrap() {
-        let data = row.column::<String>(0);
-        println!("{data:?}");
-    }
+    executor::execute(&bq_client, &project_id, first_query).await;
 
     if let Some(second_query) = second_query {
         print!(
@@ -307,19 +171,6 @@ pub async fn cast(config: AppConfig, table_ref: &TableRef, name: &str, field_typ
         sleep(Duration::from_secs(10)).await;
         println!(" Done!");
 
-        let request = QueryRequest {
-            query: second_query,
-            ..Default::default()
-        };
-
-        let mut iter = bq_client
-            .query::<Row>(project_id.as_str(), request)
-            .await
-            .unwrap();
-
-        while let Some(row) = iter.next().await.unwrap() {
-            let data = row.column::<String>(0);
-            println!("{data:?}");
-        }
+        executor::execute(&bq_client, &project_id, second_query).await;
     }
 }

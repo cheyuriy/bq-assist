@@ -1,11 +1,10 @@
 use crate::bigquery::client;
+use crate::bigquery::executor;
 use crate::bigquery::queries;
 use crate::models::bigquery::copy::CopyMetadata;
 use crate::models::config::AppConfig;
 use crate::models::schema::DatasetRef;
 use crate::models::schema::TableRef;
-use google_cloud_bigquery::http::job::query::QueryRequest;
-use google_cloud_bigquery::query::row::Row;
 use rand;
 use tabled::Table;
 
@@ -20,31 +19,17 @@ async fn get_tracked_copies(config: &AppConfig, table_ref: &TableRef) -> Vec<Cop
         table_ref.hex_digest(Some(&project_id)).as_str(),
     );
 
-    let request = QueryRequest {
-        query: query,
-        ..Default::default()
-    };
-
-    let mut iter = bq_client
-        .query::<Row>(project_id.as_str(), request)
-        .await
-        .unwrap();
-
-    let mut copies: Vec<CopyMetadata> = Vec::new();
-    while let Some(row) = iter.next().await.unwrap() {
-        let column = CopyMetadata::new(
+    executor::query_collect(&bq_client, &project_id, query, |row| {
+        CopyMetadata::new(
             row.column::<i64>(0).unwrap(),
             row.column::<String>(1).unwrap().as_str(),
             row.column::<String>(2).unwrap().as_str(),
             row.column::<String>(3).unwrap().as_str(),
             row.column::<f64>(4).unwrap(),
             row.column::<String>(5).unwrap().as_str(),
-        );
-
-        copies.push(column);
-    }
-
-    copies
+        )
+    })
+    .await
 }
 
 pub async fn list(config: AppConfig, table_ref: &TableRef) {
@@ -94,20 +79,7 @@ pub async fn add(
 
     println!("{query}");
 
-    let request = QueryRequest {
-        query: query,
-        ..Default::default()
-    };
-
-    let mut iter = bq_client
-        .query::<Row>(project_id.as_str(), request)
-        .await
-        .unwrap();
-
-    while let Some(row) = iter.next().await.unwrap() {
-        let data = row.column::<String>(0);
-        println!("{data:?}");
-    }
+    executor::execute(&bq_client, &project_id, query).await;
 }
 
 pub async fn remove(config: AppConfig, table_ref: &TableRef, name: &str) {
@@ -125,20 +97,7 @@ pub async fn remove(config: AppConfig, table_ref: &TableRef, name: &str) {
 
         let query = queries::CopyQueries::remove(&copy.project, &copy.dataset, &copy.table);
 
-        let request = QueryRequest {
-            query: query,
-            ..Default::default()
-        };
-
-        let mut iter = bq_client
-            .query::<Row>(project_id.as_str(), request)
-            .await
-            .unwrap();
-
-        while let Some(row) = iter.next().await.unwrap() {
-            let data = row.column::<String>(0);
-            println!("{data:?}");
-        }
+        executor::execute(&bq_client, &project_id, query).await;
     } else {
         panic!("Copy with provided name or ID not found or not tracked");
     }

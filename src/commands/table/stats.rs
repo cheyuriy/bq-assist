@@ -1,4 +1,5 @@
 use crate::bigquery::client;
+use crate::bigquery::executor;
 use crate::bigquery::queries;
 use crate::cli::TimeBins;
 use crate::models::bigquery::queries::format_bytes;
@@ -171,18 +172,14 @@ async fn fetch_table_info(
     project_id: &str,
     sql: String,
 ) -> Option<(String, i64, String)> {
-    let request = QueryRequest {
-        query: sql,
-        ..Default::default()
-    };
-    let mut iter = client.query::<Row>(project_id, request).await.unwrap();
-    iter.next().await.unwrap().map(|row| {
+    executor::query_first(client, project_id, sql, |row| {
         (
             row.column::<String>(0).unwrap(),
             row.column::<i64>(1).unwrap(),
             row.column::<String>(2).unwrap(),
         )
     })
+    .await
 }
 
 async fn fetch_options(
@@ -190,35 +187,23 @@ async fn fetch_options(
     project_id: &str,
     sql: String,
 ) -> Vec<(String, String)> {
-    let request = QueryRequest {
-        query: sql,
-        ..Default::default()
-    };
-    let mut iter = client.query::<Row>(project_id, request).await.unwrap();
-    let mut out = Vec::new();
-    while let Some(row) = iter.next().await.unwrap() {
-        out.push((
+    executor::query_collect(client, project_id, sql, |row| {
+        (
             row.column::<String>(0).unwrap(),
             row.column::<String>(1).unwrap(),
-        ));
-    }
-    out
+        )
+    })
+    .await
 }
 
 async fn fetch_table_list(client: &Client, project_id: &str, sql: String) -> Vec<String> {
-    let request = QueryRequest {
-        query: sql,
-        ..Default::default()
-    };
-    let mut iter = client.query::<Row>(project_id, request).await.unwrap();
-    let mut out = Vec::new();
-    while let Some(row) = iter.next().await.unwrap() {
+    executor::query_collect(client, project_id, sql, |row| {
         let p = row.column::<String>(0).unwrap();
         let d = row.column::<String>(1).unwrap();
         let t = row.column::<String>(2).unwrap();
-        out.push(format!("{p}.{d}.{t}"));
-    }
-    out
+        format!("{p}.{d}.{t}")
+    })
+    .await
 }
 
 struct StorageRow {
@@ -234,12 +219,7 @@ struct StorageRow {
 }
 
 async fn fetch_storage(client: &Client, project_id: &str, sql: String) -> Option<StorageRow> {
-    let request = QueryRequest {
-        query: sql,
-        ..Default::default()
-    };
-    let mut iter = client.query::<Row>(project_id, request).await.unwrap();
-    iter.next().await.unwrap().map(|row| StorageRow {
+    executor::query_first(client, project_id, sql, |row| StorageRow {
         total_rows: row.column::<i64>(0).unwrap(),
         active_logical: row.column::<i64>(1).unwrap(),
         long_term_logical: row.column::<i64>(2).unwrap(),
@@ -250,6 +230,7 @@ async fn fetch_storage(client: &Client, project_id: &str, sql: String) -> Option
         time_travel: row.column::<i64>(7).unwrap(),
         storage_last_modified_ms: row.column::<i64>(8).unwrap(),
     })
+    .await
 }
 
 async fn fetch_billing_mode(
@@ -257,15 +238,10 @@ async fn fetch_billing_mode(
     project_id: &str,
     sql: String,
 ) -> Option<BillingMode> {
-    let request = QueryRequest {
-        query: sql,
-        ..Default::default()
-    };
-    let mut iter = client.query::<Row>(project_id, request).await.unwrap();
-    iter.next()
-        .await
-        .unwrap()
-        .map(|row| BillingMode::parse(&row.column::<String>(0).unwrap()))
+    executor::query_first(client, project_id, sql, |row| {
+        BillingMode::parse(&row.column::<String>(0).unwrap())
+    })
+    .await
 }
 
 async fn fetch_partitions(
@@ -273,18 +249,13 @@ async fn fetch_partitions(
     project_id: &str,
     sql: String,
 ) -> (Option<u64>, Option<i64>) {
-    let request = QueryRequest {
-        query: sql,
-        ..Default::default()
-    };
-    let mut iter = client.query::<Row>(project_id, request).await.unwrap();
-    if let Some(row) = iter.next().await.unwrap() {
+    executor::query_first(client, project_id, sql, |row| {
         let count = row.column::<i64>(0).unwrap();
         let bytes = row.column::<i64>(2).unwrap();
         (Some(count as u64), Some(bytes))
-    } else {
-        (None, None)
-    }
+    })
+    .await
+    .unwrap_or((None, None))
 }
 
 fn extract_external(ddl: &str, raw_options: &[(String, String)]) -> ExternalInfo {
