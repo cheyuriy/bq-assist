@@ -9,12 +9,12 @@ use cli::CLI;
 use minijinja::Environment;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = CLI::parse();
     let mut env = Environment::new();
     minijinja_embed::load_templates!(&mut env);
 
-    let config = models::config::load_config().unwrap();
+    let config = models::config::load_config()?;
 
     match cli.commands {
         cli::Commands::Table {
@@ -23,25 +23,25 @@ async fn main() {
         } => match table_subcommands {
             cli::TableSubcommands::Clustering { command } => match command {
                 Some(cli::ClusteringSubcommands::Add { fields }) => {
-                    commands::table::clustering::add(config, &table_ref, fields).await;
+                    commands::table::clustering::add(config, &table_ref, fields).await?;
                 }
                 Some(cli::ClusteringSubcommands::Remove) => {
-                    commands::table::clustering::remove(config, &table_ref).await;
+                    commands::table::clustering::remove(config, &table_ref).await?;
                 }
                 None => {
-                    commands::table::clustering::list(config, &table_ref).await;
+                    commands::table::clustering::list(config, &table_ref).await?;
                 }
             },
 
             cli::TableSubcommands::Partitioning { command } => match command {
                 Some(cli::PartitioningSubcommands::Partitioning(partition)) => {
-                    commands::table::partitioning::add(config, &table_ref, Some(&partition)).await;
+                    commands::table::partitioning::add(config, &table_ref, Some(&partition)).await?;
                 }
                 Some(cli::PartitioningSubcommands::Remove) => {
-                    commands::table::partitioning::remove(config, &table_ref).await;
+                    commands::table::partitioning::remove(config, &table_ref).await?;
                 }
                 None => {
-                    commands::table::partitioning::list(config, &table_ref).await;
+                    commands::table::partitioning::list(config, &table_ref).await?;
                 }
             },
 
@@ -58,19 +58,19 @@ async fn main() {
                         &field_type,
                         default_value,
                     )
-                    .await;
+                    .await?;
                 }
                 Some(cli::ColumnsSubcommands::Rename { name, new_name }) => {
-                    commands::table::columns::rename(config, &table_ref, &name, &new_name).await;
+                    commands::table::columns::rename(config, &table_ref, &name, &new_name).await?;
                 }
                 Some(cli::ColumnsSubcommands::Remove { name }) => {
-                    commands::table::columns::remove(config, &table_ref, &name).await;
+                    commands::table::columns::remove(config, &table_ref, &name).await?;
                 }
                 Some(cli::ColumnsSubcommands::Cast { name, field_type }) => {
-                    commands::table::columns::cast(config, &table_ref, &name, &field_type).await;
+                    commands::table::columns::cast(config, &table_ref, &name, &field_type).await?;
                 }
                 None => {
-                    commands::table::columns::list(config, &table_ref).await;
+                    commands::table::columns::list(config, &table_ref).await?;
                 }
             },
 
@@ -81,7 +81,7 @@ async fn main() {
                 archive,
             } => {
                 commands::table::restore(config, &table_ref, &rewind, &copy, &snapshot, &archive)
-                    .await;
+                    .await?;
             }
 
             cli::TableSubcommands::Snapshots { command } => match command {
@@ -98,13 +98,13 @@ async fn main() {
                     commands::table::snapshots::add(
                         config, &table_ref, name, dataset, rewind, timestamp, no_track,
                     )
-                    .await;
+                    .await?;
                 }
                 Some(cli::SnapshotsSubcommands::Remove { name }) => {
-                    commands::table::snapshots::remove(config, &table_ref, &name).await;
+                    commands::table::snapshots::remove(config, &table_ref, &name).await?;
                 }
                 None => {
-                    commands::table::snapshots::list(config, &table_ref).await;
+                    commands::table::snapshots::list(config, &table_ref).await?;
                 }
             },
 
@@ -114,18 +114,18 @@ async fn main() {
                     dataset,
                     no_track,
                 }) => {
-                    commands::table::copy::add(config, &table_ref, name, dataset, no_track).await;
+                    commands::table::copy::add(config, &table_ref, name, dataset, no_track).await?;
                 }
                 Some(cli::CopySubcommands::Remove { name }) => {
-                    commands::table::copy::remove(config, &table_ref, &name).await;
+                    commands::table::copy::remove(config, &table_ref, &name).await?;
                 }
                 None => {
-                    commands::table::copy::list(config, &table_ref).await;
+                    commands::table::copy::list(config, &table_ref).await?;
                 }
             },
 
             cli::TableSubcommands::Options { option, value } => {
-                commands::table::set_option(config, &table_ref, &option, &value).await;
+                commands::table::set_option(config, &table_ref, &option, &value).await?;
             }
 
             cli::TableSubcommands::Queries { command } => match command {
@@ -140,7 +140,7 @@ async fn main() {
                     commands::table::queries::read(
                         config, &table_ref, single, user, period, from, to, limit,
                     )
-                    .await;
+                    .await?;
                 }
                 cli::QueriesSubcommand::Modify {
                     query_type,
@@ -154,7 +154,7 @@ async fn main() {
                     commands::table::queries::modify(
                         config, &table_ref, query_type, user, period, from, to, limit, related,
                     )
-                    .await;
+                    .await?;
                 }
             },
 
@@ -177,10 +177,10 @@ async fn main() {
                         as_category,
                         distribution_limit,
                     )
-                    .await;
+                    .await?;
                 }
                 None => {
-                    commands::table::stats::report(config, &table_ref, with_ddl).await;
+                    commands::table::stats::report(config, &table_ref, with_ddl).await?;
                 }
             },
 
@@ -203,7 +203,7 @@ async fn main() {
             },
 
             cli::TableSubcommands::Rename { new_name } => {
-                commands::table::rename(config, &table_ref, &new_name).await;
+                commands::table::rename(config, &table_ref, &new_name).await?;
             }
         },
 
@@ -213,7 +213,7 @@ async fn main() {
         } => match dataset_subcommands {
             cli::DatasetSubcommands::Options { option, value } => {
                 println!("dataset {dataset_ref} options {option} {value}");
-                commands::dataset::set_option(config, &dataset_ref, &option, &value).await;
+                commands::dataset::set_option(config, &dataset_ref, &option, &value).await?;
             }
             cli::DatasetSubcommands::Stats {} => {
                 println!("dataset {dataset_ref} stats");
@@ -357,7 +357,9 @@ async fn main() {
         }
 
         cli::Commands::Init => {
-            commands::init().await;
+            commands::init().await?;
         }
     }
+
+    Ok(())
 }

@@ -1,16 +1,16 @@
 use crate::bigquery::client;
 use crate::bigquery::executor;
 use crate::bigquery::queries;
+use crate::bigquery::validators;
 use crate::models::bigquery::partitioning::Partitioning;
 use crate::models::config::AppConfig;
 use crate::models::schema::TableRef;
 use regex::Regex;
 
-pub async fn list(config: AppConfig, table_ref: &TableRef) {
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
 
     let ddl_query = queries::CommonQueries::ddl(
         table_ref.project.as_deref().unwrap_or(&project_id),
@@ -21,23 +21,20 @@ pub async fn list(config: AppConfig, table_ref: &TableRef) {
     let ddl = executor::query_first(&bq_client, &project_id, ddl_query, |row| {
         row.column::<String>(0).unwrap()
     })
-    .await
-    .unwrap_or_else(|| panic!("Can't find DDL for the table!"));
+    .await?
+    .ok_or("Can't find DDL for the table!")?;
 
     let re = Regex::new(r"(?i)(PARTITION\s+BY\s+[^\n;]+)").unwrap();
-    let partitioning_clause = if let Some(caps) = re.captures(&ddl) {
-        Some(caps[1].trim().to_string())
-    } else {
-        None
-    };
+    let partitioning_clause = re.captures(&ddl).map(|caps| caps[1].trim().to_string());
     println!("{partitioning_clause:?}");
+
+    Ok(())
 }
 
-pub async fn add(config: AppConfig, table_ref: &TableRef, partitioning: Option<&Partitioning>) {
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+pub async fn add(config: AppConfig, table_ref: &TableRef, partitioning: Option<&Partitioning>) -> Result<(), Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
 
     let ddl_query = queries::CommonQueries::ddl(
         table_ref.project.as_deref().unwrap_or(&project_id),
@@ -48,8 +45,8 @@ pub async fn add(config: AppConfig, table_ref: &TableRef, partitioning: Option<&
     let original_ddl = executor::query_first(&bq_client, &project_id, ddl_query, |row| {
         row.column::<String>(0).unwrap()
     })
-    .await
-    .unwrap_or_else(|| panic!("Can't find DDL for the table!"));
+    .await?
+    .ok_or("Can't find DDL for the table!")?;
 
     let query = queries::PartitioningQueries::add_or_remove_partitioning(
         &original_ddl,
@@ -63,9 +60,11 @@ pub async fn add(config: AppConfig, table_ref: &TableRef, partitioning: Option<&
         partitioning,
     );
 
-    executor::execute(&bq_client, &project_id, query).await;
+    executor::execute(&bq_client, &project_id, query).await?;
+
+    Ok(())
 }
 
-pub async fn remove(config: AppConfig, table_ref: &TableRef) {
-    add(config, table_ref, None).await;
+pub async fn remove(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn std::error::Error>> {
+    add(config, table_ref, None).await
 }

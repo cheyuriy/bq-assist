@@ -1,5 +1,6 @@
 use crate::bigquery::client;
 use crate::bigquery::queries;
+use crate::bigquery::validators;
 use crate::models::bigquery::queries::{QueryJobMetadata, format_bytes};
 use crate::models::config::AppConfig;
 use crate::models::schema::TableRef;
@@ -27,16 +28,16 @@ async fn run_jobs_query(
     bq_client: &Client,
     project_id: &str,
     sql: String,
-) -> Vec<QueryJobMetadata> {
+) -> Result<Vec<QueryJobMetadata>, Box<dyn std::error::Error>> {
     let request = QueryRequest {
         query: sql,
         ..Default::default()
     };
 
-    let mut iter = bq_client.query::<Row>(project_id, request).await.unwrap();
+    let mut iter = bq_client.query::<Row>(project_id, request).await?;
 
     let mut jobs: Vec<QueryJobMetadata> = Vec::new();
-    while let Some(row) = iter.next().await.unwrap() {
+    while let Some(row) = iter.next().await? {
         let bytes_billed = row.column::<Option<i64>>(6).unwrap();
         jobs.push(QueryJobMetadata {
             job_id: row.column::<String>(0).unwrap(),
@@ -49,7 +50,7 @@ async fn run_jobs_query(
         });
     }
 
-    jobs
+    Ok(jobs)
 }
 
 pub async fn read(
@@ -61,12 +62,11 @@ pub async fn read(
     from: Option<DateTime<Utc>>,
     to: Option<DateTime<Utc>>,
     limit: u64,
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     let region = config.region.clone();
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
     let (from_ts, to_ts) = resolve_time_window(period, from, to);
     let sql = queries::QueriesQueries::read(
         &project_id,
@@ -80,8 +80,10 @@ pub async fn read(
         limit,
     );
     println!("{sql}");
-    let jobs = run_jobs_query(&bq_client, &project_id, sql).await;
+    let jobs = run_jobs_query(&bq_client, &project_id, sql).await?;
     println!("{}", Table::new(jobs));
+
+    Ok(())
 }
 
 pub async fn modify(
@@ -94,12 +96,11 @@ pub async fn modify(
     to: Option<DateTime<Utc>>,
     limit: u64,
     related: bool,
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     let region = config.region.clone();
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
     let (from_ts, to_ts) = resolve_time_window(period, from, to);
     let sql = queries::QueriesQueries::modify(
         &project_id,
@@ -114,6 +115,8 @@ pub async fn modify(
         limit,
     );
     println!("{sql}");
-    let jobs = run_jobs_query(&bq_client, &project_id, sql).await;
+    let jobs = run_jobs_query(&bq_client, &project_id, sql).await?;
     println!("{}", Table::new(jobs));
+
+    Ok(())
 }

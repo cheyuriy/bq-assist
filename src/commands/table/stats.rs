@@ -1,7 +1,9 @@
 use crate::bigquery::client;
 use crate::bigquery::executor;
 use crate::bigquery::queries;
+use crate::bigquery::validators;
 use crate::cli::TimeBins;
+use crate::errors::ValidationError;
 use crate::models::bigquery::queries::format_bytes;
 use crate::models::bigquery::stats::{
     BasicInfo, BillingMode, ClusteringInfo, ExternalInfo, OtherOption, PartitioningInfo, SizeInfo,
@@ -19,28 +21,26 @@ use std::io::{self, Write as IoWrite};
 const STORAGE_TYPES: &[&str] = &["BASE TABLE", "CLONE", "SNAPSHOT", "MATERIALIZED VIEW"];
 const NON_STORAGE_TYPES: &[&str] = &["VIEW", "EXTERNAL"];
 
-pub async fn report(config: AppConfig, table_ref: &TableRef, with_ddl: bool) {
+pub async fn report(config: AppConfig, table_ref: &TableRef, with_ddl: bool) -> Result<(), Box<dyn std::error::Error>> {
     let region = config.region.clone();
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+    let (bq_client, project_id) = client::get_client(&config).await?;
     let project = table_ref
         .project
         .as_deref()
         .unwrap_or(&project_id)
         .to_string();
+    validators::ensure_table_exists(&bq_client, &project, &table_ref.dataset, &table_ref.table).await?;
     let dataset = table_ref.dataset.clone();
     let table = table_ref.table.clone();
     let fqn = format!("{}.{}.{}", project, dataset, table);
 
     let info_sql = queries::StatsQueries::table_info(&project, &dataset, &table);
     let (table_type, creation_time_ms, ddl) = fetch_table_info(&bq_client, &project_id, info_sql)
-        .await
-        .unwrap_or_else(|| panic!("Table `{fqn}` not found"));
+        .await?
+        .ok_or_else(|| ValidationError(format!("Table `{fqn}` not found")))?;
 
     let options_sql = queries::StatsQueries::table_options(&project, &dataset, &table);
-    let raw_options = fetch_options(&bq_client, &project_id, options_sql).await;
+    let raw_options = fetch_options(&bq_client, &project_id, options_sql).await?;
 
     let mut require_partition_filter: Option<bool> = None;
     let mut other_options: Vec<OtherOption> = Vec::new();
@@ -56,9 +56,9 @@ pub async fn report(config: AppConfig, table_ref: &TableRef, with_ddl: bool) {
     }
 
     let snap_sql = queries::StatsQueries::child_snapshots(&region, &project, &dataset, &table);
-    let child_snapshots = fetch_table_list(&bq_client, &project_id, snap_sql).await;
+    let child_snapshots = fetch_table_list(&bq_client, &project_id, snap_sql).await?;
     let clones_sql = queries::StatsQueries::child_clones(&project, &dataset, &table);
-    let child_clones = fetch_table_list(&bq_client, &project_id, clones_sql).await;
+    let child_clones = fetch_table_list(&bq_client, &project_id, clones_sql).await?;
 
     let origin = if matches!(table_type.as_str(), "CLONE" | "SNAPSHOT") {
         Regex::new(r"(?i)\bCLONE\s+`([^`]+)`")
@@ -88,9 +88,9 @@ pub async fn report(config: AppConfig, table_ref: &TableRef, with_ddl: bool) {
 
     let size_info: Option<SizeInfo> = if STORAGE_TYPES.contains(&table_type.as_str()) {
         let storage_sql = queries::StatsQueries::table_storage(&region, &project, &dataset, &table);
-        let storage = fetch_storage(&bq_client, &project_id, storage_sql).await;
+        let storage = fetch_storage(&bq_client, &project_id, storage_sql).await?;
         let billing_sql = queries::StatsQueries::dataset_billing_mode(&region, &project, &dataset);
-        let billing = fetch_billing_mode(&bq_client, &project_id, billing_sql).await;
+        let billing = fetch_billing_mode(&bq_client, &project_id, billing_sql).await?;
 
         if let Some(s) = storage {
             basic.updated = DateTime::<Utc>::from_timestamp_millis(s.storage_last_modified_ms);
@@ -121,7 +121,7 @@ pub async fn report(config: AppConfig, table_ref: &TableRef, with_ddl: bool) {
 
         let (partitions_count, total_bytes) = if part_clause.is_some() {
             let parts_sql = queries::StatsQueries::partitions(&project, &dataset, &table);
-            fetch_partitions(&bq_client, &project_id, parts_sql).await
+            fetch_partitions(&bq_client, &project_id, parts_sql).await?
         } else {
             (None, None)
         };
@@ -165,13 +165,14 @@ pub async fn report(config: AppConfig, table_ref: &TableRef, with_ddl: bool) {
         &other_options,
         if with_ddl { Some(ddl.as_str()) } else { None },
     );
+    Ok(())
 }
 
 async fn fetch_table_info(
     client: &Client,
     project_id: &str,
     sql: String,
-) -> Option<(String, i64, String)> {
+) -> Result<Option<(String, i64, String)>, Box<dyn std::error::Error>> {
     executor::query_first(client, project_id, sql, |row| {
         (
             row.column::<String>(0).unwrap(),
@@ -180,13 +181,14 @@ async fn fetch_table_info(
         )
     })
     .await
+    .map_err(Into::into)
 }
 
 async fn fetch_options(
     client: &Client,
     project_id: &str,
     sql: String,
-) -> Vec<(String, String)> {
+) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
     executor::query_collect(client, project_id, sql, |row| {
         (
             row.column::<String>(0).unwrap(),
@@ -194,9 +196,10 @@ async fn fetch_options(
         )
     })
     .await
+    .map_err(Into::into)
 }
 
-async fn fetch_table_list(client: &Client, project_id: &str, sql: String) -> Vec<String> {
+async fn fetch_table_list(client: &Client, project_id: &str, sql: String) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     executor::query_collect(client, project_id, sql, |row| {
         let p = row.column::<String>(0).unwrap();
         let d = row.column::<String>(1).unwrap();
@@ -204,6 +207,7 @@ async fn fetch_table_list(client: &Client, project_id: &str, sql: String) -> Vec
         format!("{p}.{d}.{t}")
     })
     .await
+    .map_err(Into::into)
 }
 
 struct StorageRow {
@@ -218,7 +222,7 @@ struct StorageRow {
     storage_last_modified_ms: i64,
 }
 
-async fn fetch_storage(client: &Client, project_id: &str, sql: String) -> Option<StorageRow> {
+async fn fetch_storage(client: &Client, project_id: &str, sql: String) -> Result<Option<StorageRow>, Box<dyn std::error::Error>> {
     executor::query_first(client, project_id, sql, |row| StorageRow {
         total_rows: row.column::<i64>(0).unwrap(),
         active_logical: row.column::<i64>(1).unwrap(),
@@ -231,31 +235,33 @@ async fn fetch_storage(client: &Client, project_id: &str, sql: String) -> Option
         storage_last_modified_ms: row.column::<i64>(8).unwrap(),
     })
     .await
+    .map_err(Into::into)
 }
 
 async fn fetch_billing_mode(
     client: &Client,
     project_id: &str,
     sql: String,
-) -> Option<BillingMode> {
+) -> Result<Option<BillingMode>, Box<dyn std::error::Error>> {
     executor::query_first(client, project_id, sql, |row| {
         BillingMode::parse(&row.column::<String>(0).unwrap())
     })
     .await
+    .map_err(Into::into)
 }
 
 async fn fetch_partitions(
     client: &Client,
     project_id: &str,
     sql: String,
-) -> (Option<u64>, Option<i64>) {
-    executor::query_first(client, project_id, sql, |row| {
+) -> Result<(Option<u64>, Option<i64>), Box<dyn std::error::Error>> {
+    let result = executor::query_first(client, project_id, sql, |row| {
         let count = row.column::<i64>(0).unwrap();
         let bytes = row.column::<i64>(2).unwrap();
         (Some(count as u64), Some(bytes))
     })
-    .await
-    .unwrap_or((None, None))
+    .await?;
+    Ok(result.unwrap_or((None, None)))
 }
 
 fn extract_external(ddl: &str, raw_options: &[(String, String)]) -> ExternalInfo {
@@ -700,16 +706,14 @@ pub async fn column(
     time_bins: TimeBins,
     as_category: bool,
     distribution_limit: u64,
-) {
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
     let project = table_ref
         .project
         .as_deref()
         .unwrap_or(&project_id)
         .to_string();
+    validators::ensure_table_exists(&bq_client, &project, &table_ref.dataset, &table_ref.table).await?;
     let dataset = table_ref.dataset.clone();
     let table = table_ref.table.clone();
     let fqn = format!("{}.{}.{}", project, dataset, table);
@@ -717,11 +721,11 @@ pub async fn column(
     // Phase 1: metadata — zero table scans
     let info_sql = queries::StatsQueries::table_info(&project, &dataset, &table);
     let (_, _, ddl) = fetch_table_info(&bq_client, &project_id, info_sql)
-        .await
-        .unwrap_or_else(|| panic!("Table `{fqn}` not found"));
+        .await?
+        .ok_or_else(|| ValidationError(format!("Table `{fqn}` not found")))?;
 
     let col_sql = queries::StatsQueries::column_info(&project, &dataset, &table, column_name);
-    let meta = fetch_column_info(&bq_client, &project_id, col_sql, column_name, &ddl).await;
+    let meta = fetch_column_info(&bq_client, &project_id, col_sql, column_name, &ddl).await?;
 
     render_column_meta(column_name, &fqn, &meta);
 
@@ -734,11 +738,11 @@ pub async fn column(
                 .yellow(),
             "Continue? [y/N]: ".bold()
         );
-        io::stdout().flush().unwrap();
+        io::stdout().flush()?;
         let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
+        io::stdin().read_line(&mut input)?;
         if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
-            return;
+            return Ok(());
         }
     }
 
@@ -755,7 +759,7 @@ pub async fn column(
         bins_number,
         &time_bins,
     )
-    .await;
+    .await?;
 
     println!();
     render_deep_stats(&deep_stats);
@@ -765,10 +769,11 @@ pub async fn column(
     if as_category && !is_bool {
         let freq_sql =
             queries::StatsQueries::column_frequency(&project, &dataset, &table, column_name);
-        let cat = fetch_category(&bq_client, &project_id, freq_sql, distribution_limit).await;
+        let cat = fetch_category(&bq_client, &project_id, freq_sql, distribution_limit).await?;
         println!();
         render_category_stats(&cat, distribution_limit);
     }
+    Ok(())
 }
 
 fn base_type_name(data_type: &str) -> &str {
@@ -787,17 +792,16 @@ async fn fetch_column_info(
     sql: String,
     column_name: &str,
     ddl: &str,
-) -> ColumnMetaInfo {
+) -> Result<ColumnMetaInfo, Box<dyn std::error::Error>> {
     let request = QueryRequest {
         query: sql,
         ..Default::default()
     };
-    let mut iter = client.query::<Row>(project_id, request).await.unwrap();
+    let mut iter = client.query::<Row>(project_id, request).await?;
     let row = iter
         .next()
-        .await
-        .unwrap()
-        .unwrap_or_else(|| panic!("Column `{column_name}` not found"));
+        .await?
+        .ok_or_else(|| ValidationError(format!("Column `{column_name}` not found")))?;
 
     let data_type = row.column::<String>(0).unwrap();
     let is_nullable = row
@@ -823,13 +827,13 @@ async fn fetch_column_info(
         .captures(ddl)
         .map(|c| format!("PARTITION BY {}", c[1].trim()));
 
-    ColumnMetaInfo {
+    Ok(ColumnMetaInfo {
         data_type,
         is_nullable,
         clustering_position,
         is_partitioned,
         partition_clause,
-    }
+    })
 }
 
 async fn fetch_deep_stats(
@@ -842,7 +846,7 @@ async fn fetch_deep_stats(
     base_type: &str,
     bins_number: u32,
     time_bins: &TimeBins,
-) -> DeepStats {
+) -> Result<DeepStats, Box<dyn std::error::Error>> {
     let upper = base_type.to_uppercase();
     match upper.as_str() {
         "INT64" | "INT" | "SMALLINT" | "INTEGER" | "BIGINT" | "TINYINT" | "BYTEINT"
@@ -895,13 +899,13 @@ async fn fetch_numeric(
     table: &str,
     column: &str,
     bins_number: u32,
-) -> DeepStats {
+) -> Result<DeepStats, Box<dyn std::error::Error>> {
     let sql = queries::StatsQueries::column_numeric(project, dataset, table, column, bins_number);
     let request = QueryRequest {
         query: sql,
         ..Default::default()
     };
-    let mut iter = client.query::<Row>(project_id, request).await.unwrap();
+    let mut iter = client.query::<Row>(project_id, request).await?;
     let mut total = 0i64;
     let mut null_count = 0i64;
     let mut min = 0f64;
@@ -910,7 +914,7 @@ async fn fetch_numeric(
     let mut raw_bins: Vec<(i64, i64)> = Vec::new(); // (bucket, count)
     let mut first = true;
 
-    while let Some(row) = iter.next().await.unwrap() {
+    while let Some(row) = iter.next().await? {
         if first {
             total = row.column::<i64>(0).unwrap_or(0);
             null_count = row.column::<i64>(1).unwrap_or(0);
@@ -950,7 +954,7 @@ async fn fetch_numeric(
         })
         .collect();
 
-    DeepStats::Numeric {
+    Ok(DeepStats::Numeric {
         null_pct,
         null_count,
         total,
@@ -958,7 +962,7 @@ async fn fetch_numeric(
         max,
         avg,
         bins,
-    }
+    })
 }
 
 async fn fetch_string(
@@ -968,14 +972,14 @@ async fn fetch_string(
     dataset: &str,
     table: &str,
     column: &str,
-) -> DeepStats {
+) -> Result<DeepStats, Box<dyn std::error::Error>> {
     let sql = queries::StatsQueries::column_string(project, dataset, table, column);
     let request = QueryRequest {
         query: sql,
         ..Default::default()
     };
-    let mut iter = client.query::<Row>(project_id, request).await.unwrap();
-    if let Some(row) = iter.next().await.unwrap() {
+    let mut iter = client.query::<Row>(project_id, request).await?;
+    if let Some(row) = iter.next().await? {
         let total = row.column::<i64>(0).unwrap_or(0);
         let null_count = row.column::<i64>(1).unwrap_or(0);
         let min_len = row.column::<i64>(2).unwrap_or(0);
@@ -986,23 +990,23 @@ async fn fetch_string(
         } else {
             0.0
         };
-        DeepStats::Str {
+        Ok(DeepStats::Str {
             null_pct,
             null_count,
             total,
             min_len,
             max_len,
             avg_len,
-        }
+        })
     } else {
-        DeepStats::Str {
+        Ok(DeepStats::Str {
             null_pct: 0.0,
             null_count: 0,
             total: 0,
             min_len: 0,
             max_len: 0,
             avg_len: 0.0,
-        }
+        })
     }
 }
 
@@ -1016,7 +1020,7 @@ async fn fetch_datetime(
     time_bins: &str,
     is_time: bool,
     trunc_fn: &str,
-) -> DeepStats {
+) -> Result<DeepStats, Box<dyn std::error::Error>> {
     let sql = queries::StatsQueries::column_datetime(
         project, dataset, table, column, time_bins, is_time, trunc_fn,
     );
@@ -1024,7 +1028,7 @@ async fn fetch_datetime(
         query: sql,
         ..Default::default()
     };
-    let mut iter = client.query::<Row>(project_id, request).await.unwrap();
+    let mut iter = client.query::<Row>(project_id, request).await?;
     let mut total = 0i64;
     let mut null_count = 0i64;
     let mut earliest = String::new();
@@ -1032,7 +1036,7 @@ async fn fetch_datetime(
     let mut distribution: Vec<(String, i64)> = Vec::new();
     let mut first = true;
 
-    while let Some(row) = iter.next().await.unwrap() {
+    while let Some(row) = iter.next().await? {
         if first {
             total = row.column::<i64>(0).unwrap_or(0);
             null_count = row.column::<i64>(1).unwrap_or(0);
@@ -1051,14 +1055,14 @@ async fn fetch_datetime(
         0.0
     };
 
-    DeepStats::Datetime {
+    Ok(DeepStats::Datetime {
         null_pct,
         null_count,
         total,
         earliest,
         latest,
         distribution,
-    }
+    })
 }
 
 async fn fetch_boolean(
@@ -1068,14 +1072,14 @@ async fn fetch_boolean(
     dataset: &str,
     table: &str,
     column: &str,
-) -> DeepStats {
+) -> Result<DeepStats, Box<dyn std::error::Error>> {
     let sql = queries::StatsQueries::column_boolean(project, dataset, table, column);
     let request = QueryRequest {
         query: sql,
         ..Default::default()
     };
-    let mut iter = client.query::<Row>(project_id, request).await.unwrap();
-    if let Some(row) = iter.next().await.unwrap() {
+    let mut iter = client.query::<Row>(project_id, request).await?;
+    if let Some(row) = iter.next().await? {
         let total = row.column::<i64>(0).unwrap_or(0);
         let null_count = row.column::<i64>(1).unwrap_or(0);
         let true_count = row.column::<i64>(2).unwrap_or(0);
@@ -1090,19 +1094,19 @@ async fn fetch_boolean(
         } else {
             0.0
         };
-        DeepStats::Boolean {
+        Ok(DeepStats::Boolean {
             null_pct,
             null_count,
             total,
             true_pct,
-        }
+        })
     } else {
-        DeepStats::Boolean {
+        Ok(DeepStats::Boolean {
             null_pct: 0.0,
             null_count: 0,
             total: 0,
             true_pct: 0.0,
-        }
+        })
     }
 }
 
@@ -1113,14 +1117,14 @@ async fn fetch_generic(
     dataset: &str,
     table: &str,
     column: &str,
-) -> DeepStats {
+) -> Result<DeepStats, Box<dyn std::error::Error>> {
     let sql = queries::StatsQueries::column_generic(project, dataset, table, column);
     let request = QueryRequest {
         query: sql,
         ..Default::default()
     };
-    let mut iter = client.query::<Row>(project_id, request).await.unwrap();
-    if let Some(row) = iter.next().await.unwrap() {
+    let mut iter = client.query::<Row>(project_id, request).await?;
+    if let Some(row) = iter.next().await? {
         let total = row.column::<i64>(0).unwrap_or(0);
         let null_count = row.column::<i64>(1).unwrap_or(0);
         let null_pct = if total > 0 {
@@ -1128,17 +1132,17 @@ async fn fetch_generic(
         } else {
             0.0
         };
-        DeepStats::Generic {
+        Ok(DeepStats::Generic {
             null_pct,
             null_count,
             total,
-        }
+        })
     } else {
-        DeepStats::Generic {
+        Ok(DeepStats::Generic {
             null_pct: 0.0,
             null_count: 0,
             total: 0,
-        }
+        })
     }
 }
 
@@ -1147,17 +1151,17 @@ async fn fetch_category(
     project_id: &str,
     sql: String,
     distribution_limit: u64,
-) -> CategoryStats {
+) -> Result<CategoryStats, Box<dyn std::error::Error>> {
     let request = QueryRequest {
         query: sql,
         ..Default::default()
     };
-    let mut iter = client.query::<Row>(project_id, request).await.unwrap();
+    let mut iter = client.query::<Row>(project_id, request).await?;
     let mut rows: Vec<(String, i64)> = Vec::new();
     let mut distinct_count = 0i64;
     let mut first = true;
 
-    while let Some(row) = iter.next().await.unwrap() {
+    while let Some(row) = iter.next().await? {
         let value = row.column::<String>(0).unwrap_or_default();
         let count = row.column::<i64>(1).unwrap_or(0);
         if first {
@@ -1173,10 +1177,10 @@ async fn fetch_category(
         None
     };
 
-    CategoryStats {
+    Ok(CategoryStats {
         distinct_count,
         frequency,
-    }
+    })
 }
 
 fn render_column_meta(column_name: &str, fqn: &str, meta: &ColumnMetaInfo) {

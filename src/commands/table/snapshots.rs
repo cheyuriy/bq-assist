@@ -1,6 +1,7 @@
 use crate::bigquery::client;
 use crate::bigquery::executor;
 use crate::bigquery::queries;
+use crate::bigquery::validators;
 use crate::models::bigquery::snapshot::SnapshotMetadata;
 use crate::models::config::AppConfig;
 use crate::models::schema::DatasetRef;
@@ -11,18 +12,15 @@ use rand;
 use std::time::Duration;
 use tabled::Table;
 
-async fn get_tracked_snapshots(config: &AppConfig, table_ref: &TableRef) -> Vec<SnapshotMetadata> {
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+async fn get_tracked_snapshots(config: &AppConfig, table_ref: &TableRef) -> Result<Vec<SnapshotMetadata>, Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
 
     let query = queries::SnapshotsQueries::list(
         &config.region,
         table_ref.hex_digest(Some(&project_id)).as_str(),
     );
 
-    executor::query_collect(&bq_client, &project_id, query, |row| {
+    let snapshots = executor::query_collect(&bq_client, &project_id, query, |row| {
         SnapshotMetadata::new(
             row.column::<i64>(0).unwrap(),
             row.column::<String>(1).unwrap().as_str(),
@@ -32,14 +30,22 @@ async fn get_tracked_snapshots(config: &AppConfig, table_ref: &TableRef) -> Vec<
             row.column::<String>(5).unwrap().as_str(),
         )
     })
-    .await
+    .await?;
+
+    Ok(snapshots)
 }
 
-pub async fn list(config: AppConfig, table_ref: &TableRef) {
-    let snapshots = get_tracked_snapshots(&config, table_ref).await;
+pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
+
+    let snapshots = get_tracked_snapshots(&config, table_ref).await?;
 
     let table = Table::new(snapshots);
     println!("{}", table);
+
+    Ok(())
 }
 
 pub async fn add(
@@ -50,7 +56,7 @@ pub async fn add(
     rewind: Option<Duration>,
     timestamp: Option<DateTime<Utc>>,
     no_track: bool,
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     let now = Utc::now();
     let target_timestamp = if rewind.is_some() {
         Some(now.timestamp() - rewind.map(|d| d.as_secs() as i64).unwrap())
@@ -75,10 +81,9 @@ pub async fn add(
         format!("{table_name}_{snapshot_ts}")
     };
 
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
 
     let query = queries::SnapshotsQueries::add(
         table_ref.project.as_deref().unwrap_or(&project_id),
@@ -103,21 +108,24 @@ pub async fn add(
         rand::random_range(1..=1_000_000),
     );
 
-    executor::execute(&bq_client, &project_id, query).await;
+    executor::execute(&bq_client, &project_id, query).await?;
+
+    Ok(())
 }
 
-pub async fn remove(config: AppConfig, table_ref: &TableRef, name: &str) {
-    let snapshots = get_tracked_snapshots(&config, table_ref).await;
+pub async fn remove(config: AppConfig, table_ref: &TableRef, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
+
+    let snapshots = get_tracked_snapshots(&config, table_ref).await?;
 
     let selected_snapshots: Vec<&SnapshotMetadata> = snapshots
         .iter()
         .filter(|x| x.id.to_string().as_str() == name || x.table == name)
         .collect();
     if let Some(snapshot) = selected_snapshots.first() {
-        let (bq_client, project_id) = match client::get_client(&config).await {
-            Ok(v) => v,
-            Err(e) => panic!("{e}"),
-        };
+        let (bq_client, project_id) = client::get_client(&config).await?;
 
         let query = queries::SnapshotsQueries::remove(
             &snapshot.project,
@@ -125,8 +133,10 @@ pub async fn remove(config: AppConfig, table_ref: &TableRef, name: &str) {
             &snapshot.table,
         );
 
-        executor::execute(&bq_client, &project_id, query).await;
+        executor::execute(&bq_client, &project_id, query).await?;
     } else {
-        panic!("Copy with provided name or ID not found or not tracked");
+        return Err("Snapshot with provided name or ID not found or not tracked".into());
     }
+
+    Ok(())
 }

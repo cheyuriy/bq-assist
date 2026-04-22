@@ -1,6 +1,7 @@
 use crate::bigquery::client;
 use crate::bigquery::executor;
 use crate::bigquery::queries;
+use crate::bigquery::validators;
 use crate::models::bigquery::copy::CopyMetadata;
 use crate::models::config::AppConfig;
 use crate::models::schema::DatasetRef;
@@ -8,18 +9,15 @@ use crate::models::schema::TableRef;
 use rand;
 use tabled::Table;
 
-async fn get_tracked_copies(config: &AppConfig, table_ref: &TableRef) -> Vec<CopyMetadata> {
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+async fn get_tracked_copies(config: &AppConfig, table_ref: &TableRef) -> Result<Vec<CopyMetadata>, Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
 
     let query = queries::CopyQueries::list(
         &config.region,
         table_ref.hex_digest(Some(&project_id)).as_str(),
     );
 
-    executor::query_collect(&bq_client, &project_id, query, |row| {
+    let copies = executor::query_collect(&bq_client, &project_id, query, |row| {
         CopyMetadata::new(
             row.column::<i64>(0).unwrap(),
             row.column::<String>(1).unwrap().as_str(),
@@ -29,14 +27,22 @@ async fn get_tracked_copies(config: &AppConfig, table_ref: &TableRef) -> Vec<Cop
             row.column::<String>(5).unwrap().as_str(),
         )
     })
-    .await
+    .await?;
+
+    Ok(copies)
 }
 
-pub async fn list(config: AppConfig, table_ref: &TableRef) {
-    let copies = get_tracked_copies(&config, table_ref).await;
+pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
+
+    let copies = get_tracked_copies(&config, table_ref).await?;
 
     let table = Table::new(copies);
     println!("{}", table);
+
+    Ok(())
 }
 
 pub async fn add(
@@ -45,7 +51,7 @@ pub async fn add(
     name: Option<String>,
     dataset: Option<DatasetRef>,
     no_track: bool,
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     let copy_name = if let Some(name) = name {
         name
     } else {
@@ -54,10 +60,9 @@ pub async fn add(
         format!("{table_name}_{ts}")
     };
 
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
 
     let query = queries::CopyQueries::add(
         table_ref.project.as_deref().unwrap_or(&project_id),
@@ -79,26 +84,31 @@ pub async fn add(
 
     println!("{query}");
 
-    executor::execute(&bq_client, &project_id, query).await;
+    executor::execute(&bq_client, &project_id, query).await?;
+
+    Ok(())
 }
 
-pub async fn remove(config: AppConfig, table_ref: &TableRef, name: &str) {
-    let copies = get_tracked_copies(&config, table_ref).await;
+pub async fn remove(config: AppConfig, table_ref: &TableRef, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
+
+    let copies = get_tracked_copies(&config, table_ref).await?;
 
     let selected_copies: Vec<&CopyMetadata> = copies
         .iter()
         .filter(|x| x.id.to_string().as_str() == name || x.table == name)
         .collect();
     if let Some(copy) = selected_copies.first() {
-        let (bq_client, project_id) = match client::get_client(&config).await {
-            Ok(v) => v,
-            Err(e) => panic!("{e}"),
-        };
+        let (bq_client, project_id) = client::get_client(&config).await?;
 
         let query = queries::CopyQueries::remove(&copy.project, &copy.dataset, &copy.table);
 
-        executor::execute(&bq_client, &project_id, query).await;
+        executor::execute(&bq_client, &project_id, query).await?;
     } else {
-        panic!("Copy with provided name or ID not found or not tracked");
+        return Err("Copy with provided name or ID not found or not tracked".into());
     }
+
+    Ok(())
 }

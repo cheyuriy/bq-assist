@@ -86,3 +86,49 @@ impl From<config::ConfigError> for ConfigurationError {
         ConfigurationError::ConfigParsingError(err)
     }
 }
+
+#[derive(Debug)]
+pub enum BigQueryError {
+    QueryNotExecuted(google_cloud_bigquery::client::QueryError),
+    QueryResultsError(google_cloud_bigquery::query::Error),
+    TableNotExists(String),
+    DatasetNotExists(String),
+    ApiError(String),
+}
+
+impl std::fmt::Display for BigQueryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BigQueryError::QueryNotExecuted(e) => write!(f, "Failed to start BigQuery query: {e}"),
+            BigQueryError::QueryResultsError(e) => write!(f, "Failed to read BigQuery results: {e}"),
+            BigQueryError::TableNotExists(name) => write!(f, "Table `{name}` does not exist"),
+            BigQueryError::DatasetNotExists(name) => write!(f, "Dataset `{name}` does not exist"),
+            BigQueryError::ApiError(e) => write!(f, "BigQuery API error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for BigQueryError {}
+
+impl From<google_cloud_bigquery::client::QueryError> for BigQueryError {
+    fn from(err: google_cloud_bigquery::client::QueryError) -> Self {
+        BigQueryError::QueryNotExecuted(err)
+    }
+}
+
+impl From<google_cloud_bigquery::query::Error> for BigQueryError {
+    fn from(err: google_cloud_bigquery::query::Error) -> Self {
+        BigQueryError::QueryResultsError(err)
+    }
+}
+
+#[derive(Debug)]
+pub struct ValidationError(pub String);
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for ValidationError {}

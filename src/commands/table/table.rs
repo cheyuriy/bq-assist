@@ -1,6 +1,8 @@
 use crate::bigquery::client;
 use crate::bigquery::executor;
 use crate::bigquery::queries;
+use crate::bigquery::validators;
+use crate::errors::ValidationError;
 use crate::models::bigquery::options::TableOption;
 use crate::models::config::AppConfig;
 use crate::models::schema::TableRef;
@@ -12,11 +14,10 @@ use google_cloud_bigquery::http::job::{
 use google_cloud_bigquery::http::table::TableReference;
 use std::time::Duration;
 
-pub async fn rename(config: AppConfig, table_ref: &TableRef, new_name: &str) {
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+pub async fn rename(config: AppConfig, table_ref: &TableRef, new_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
 
     let ddl_query = queries::TableQueries::rename(
         table_ref.project.as_deref().unwrap_or(&project_id),
@@ -25,7 +26,9 @@ pub async fn rename(config: AppConfig, table_ref: &TableRef, new_name: &str) {
         new_name,
     );
 
-    executor::execute(&bq_client, &project_id, ddl_query).await;
+    executor::execute(&bq_client, &project_id, ddl_query).await?;
+
+    Ok(())
 }
 
 pub async fn set_option(
@@ -33,16 +36,14 @@ pub async fn set_option(
     table_ref: &TableRef,
     option_name: &TableOption,
     option_value: &str,
-) {
-    match option_name.validate_value(option_value) {
-        Err(e) => panic!("{e}"),
-        _ => (),
-    }
+) -> Result<(), Box<dyn std::error::Error>> {
+    option_name
+        .validate_value(option_value)
+        .map_err(ValidationError)?;
 
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
 
     let option_query = queries::TableQueries::set_option(
         table_ref.project.as_deref().unwrap_or(&project_id),
@@ -52,7 +53,9 @@ pub async fn set_option(
         option_value,
     );
 
-    executor::execute(&bq_client, &project_id, option_query).await;
+    executor::execute(&bq_client, &project_id, option_query).await?;
+
+    Ok(())
 }
 
 pub async fn restore(
@@ -62,11 +65,8 @@ pub async fn restore(
     _copy_id: &Option<String>,
     _snapshot_id: &Option<String>,
     _archive: &Option<bool>,
-) {
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
 
     let table_exists = match bq_client
         .table()
@@ -83,11 +83,11 @@ pub async fn restore(
                 if data.code == 404 {
                     false
                 } else {
-                    panic!("{e:?}")
+                    return Err(format!("{e:?}").into());
                 }
             }
             //TODO: table().get() method returns error for tables with columns of GEOGRAPHY and RANGE types. Seems to be a bug.
-            _ => panic!("{e:?}"),
+            _ => return Err(format!("{e:?}").into()),
         },
     };
 
@@ -100,7 +100,7 @@ pub async fn restore(
                 duration,
             );
 
-            executor::execute(&bq_client, &project_id, rewind_query).await;
+            executor::execute(&bq_client, &project_id, rewind_query).await?;
         }
     } else {
         println!("Table doesn't exist");
@@ -149,10 +149,13 @@ pub async fn restore(
                 },
                 ..Default::default()
             };
-            match bq_client.job().create(&job).await {
-                Ok(_) => (), //TODO: add notification about lost partitioning and clustering
-                Err(e) => panic!("{e:?}"),
-            }
+            bq_client
+                .job()
+                .create(&job)
+                .await
+                .map_err(|e| format!("{e:?}"))?; //TODO: add notification about lost partitioning and clustering
         }
     }
+
+    Ok(())
 }

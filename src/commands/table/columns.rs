@@ -1,6 +1,8 @@
 use crate::bigquery::client;
 use crate::bigquery::executor;
 use crate::bigquery::queries;
+use crate::bigquery::validators;
+use crate::errors::ValidationError;
 use crate::models::bigquery::columns::{ColumnMetadata, Type};
 use crate::models::config::AppConfig;
 use crate::models::schema::TableRef;
@@ -35,11 +37,10 @@ fn map_column_row(row: google_cloud_bigquery::query::row::Row) -> ColumnMetadata
     )
 }
 
-pub async fn list(config: AppConfig, table_ref: &TableRef) {
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
 
     let query = queries::CommonQueries::columns(
         table_ref
@@ -51,10 +52,12 @@ pub async fn list(config: AppConfig, table_ref: &TableRef) {
         None,
     );
 
-    let columns = executor::query_collect(&bq_client, &project_id, query, map_column_row).await;
+    let columns = executor::query_collect(&bq_client, &project_id, query, map_column_row).await?;
 
     let table = Table::new(columns);
     println!("{}", table);
+
+    Ok(())
 }
 
 pub async fn add(
@@ -63,15 +66,14 @@ pub async fn add(
     name: &str,
     field_type: &Type,
     default_value: Option<String>,
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     if *field_type == Type::Range || *field_type == Type::Struct {
-        panic!("Adding column with type {field_type:?} is not implemented");
+        return Err(ValidationError(format!("Adding column with type {field_type:?} is not implemented")).into());
     }
 
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
 
     let query = queries::ColumnsQueries::add_column(
         table_ref.project.as_deref().unwrap_or(&project_id),
@@ -82,14 +84,15 @@ pub async fn add(
         default_value,
     );
 
-    executor::execute(&bq_client, &project_id, query).await;
+    executor::execute(&bq_client, &project_id, query).await?;
+
+    Ok(())
 }
 
-pub async fn remove(config: AppConfig, table_ref: &TableRef, name: &str) {
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+pub async fn remove(config: AppConfig, table_ref: &TableRef, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
 
     let query = queries::ColumnsQueries::remove_column(
         table_ref.project.as_deref().unwrap_or(&project_id),
@@ -98,14 +101,15 @@ pub async fn remove(config: AppConfig, table_ref: &TableRef, name: &str) {
         name,
     );
 
-    executor::execute(&bq_client, &project_id, query).await;
+    executor::execute(&bq_client, &project_id, query).await?;
+
+    Ok(())
 }
 
-pub async fn rename(config: AppConfig, table_ref: &TableRef, name: &str, new_name: &str) {
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+pub async fn rename(config: AppConfig, table_ref: &TableRef, name: &str, new_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
 
     let column_query = queries::CommonQueries::columns(
         table_ref.project.as_deref().unwrap_or(&project_id),
@@ -115,8 +119,8 @@ pub async fn rename(config: AppConfig, table_ref: &TableRef, name: &str, new_nam
     );
 
     let column = executor::query_first(&bq_client, &project_id, column_query, map_column_row)
-        .await
-        .unwrap_or_else(|| panic!("Can't find metadata about that column"));
+        .await?
+        .ok_or("Can't find metadata about that column")?;
 
     println!("{column:?}");
 
@@ -130,14 +134,15 @@ pub async fn rename(config: AppConfig, table_ref: &TableRef, name: &str, new_nam
         column.column_default,
     );
 
-    executor::execute(&bq_client, &project_id, rename_query).await;
+    executor::execute(&bq_client, &project_id, rename_query).await?;
+
+    Ok(())
 }
 
-pub async fn cast(config: AppConfig, table_ref: &TableRef, name: &str, field_type: &Type) {
-    let (bq_client, project_id) = match client::get_client(&config).await {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    };
+pub async fn cast(config: AppConfig, table_ref: &TableRef, name: &str, field_type: &Type) -> Result<(), Box<dyn std::error::Error>> {
+    let (bq_client, project_id) = client::get_client(&config).await?;
+    let project = table_ref.project.as_deref().unwrap_or(&project_id);
+    validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
 
     let column_query = queries::CommonQueries::columns(
         table_ref.project.as_deref().unwrap_or(&project_id),
@@ -147,8 +152,8 @@ pub async fn cast(config: AppConfig, table_ref: &TableRef, name: &str, field_typ
     );
 
     let column = executor::query_first(&bq_client, &project_id, column_query, map_column_row)
-        .await
-        .unwrap_or_else(|| panic!("Can't find metadata about that column"));
+        .await?
+        .ok_or("Can't find metadata about that column")?;
 
     // BigQuery limits number of DDL and DML jobs per table (5 per 10 seconds per table by default)
     // However, casting column to another type needs more than 5 operations
@@ -162,7 +167,7 @@ pub async fn cast(config: AppConfig, table_ref: &TableRef, name: &str, field_typ
         &field_type,
     );
 
-    executor::execute(&bq_client, &project_id, first_query).await;
+    executor::execute(&bq_client, &project_id, first_query).await?;
 
     if let Some(second_query) = second_query {
         print!(
@@ -171,6 +176,8 @@ pub async fn cast(config: AppConfig, table_ref: &TableRef, name: &str, field_typ
         sleep(Duration::from_secs(10)).await;
         println!(" Done!");
 
-        executor::execute(&bq_client, &project_id, second_query).await;
+        executor::execute(&bq_client, &project_id, second_query).await?;
     }
+
+    Ok(())
 }

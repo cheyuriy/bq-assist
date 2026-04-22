@@ -16,7 +16,7 @@ fn resolve_config_path() -> PathBuf {
     }
 }
 
-pub async fn init() {
+pub async fn init() -> Result<(), Box<dyn std::error::Error>> {
     let theme = ColorfulTheme::default();
 
     let config_path = resolve_config_path();
@@ -28,8 +28,7 @@ pub async fn init() {
         let overwrite = Confirm::with_theme(&theme)
             .with_prompt("Overwrite it and run setup again?")
             .default(false)
-            .interact()
-            .unwrap_or_else(|e| panic!("{e}"));
+            .interact()?;
 
         if !overwrite {
             println!();
@@ -37,7 +36,7 @@ pub async fn init() {
                 "Setup is already complete. Run `bq-assist --help` to see all available commands."
             );
             println!();
-            return;
+            return Ok(());
         }
     }
 
@@ -52,8 +51,7 @@ pub async fn init() {
     let create = Confirm::with_theme(&theme)
         .with_prompt("Create a config file now?")
         .default(false)
-        .interact()
-        .unwrap_or_else(|e| panic!("{e}"));
+        .interact()?;
 
     if !create {
         println!();
@@ -66,7 +64,7 @@ pub async fn init() {
         println!("  BQ_ASSIST_CONFIG_DIR            — custom config directory");
         println!();
         println!("Run `bq-assist --help` to see all available commands.");
-        return;
+        return Ok(());
     }
 
     println!();
@@ -84,14 +82,13 @@ pub async fn init() {
         let use_gac = Confirm::with_theme(&theme)
             .with_prompt("Use this service account?")
             .default(true)
-            .interact()
-            .unwrap_or_else(|e| panic!("{e}"));
+            .interact()?;
 
         if !use_gac {
-            service_account_path = Some(prompt_service_account_path(&theme));
+            service_account_path = Some(prompt_service_account_path(&theme)?);
         }
     } else {
-        service_account_path = Some(prompt_service_account_path(&theme));
+        service_account_path = Some(prompt_service_account_path(&theme)?);
     }
 
     // --- Default project ---
@@ -104,8 +101,7 @@ pub async fn init() {
     let project_input: String = Input::with_theme(&theme)
         .with_prompt("Default BigQuery project ID (leave blank to skip)")
         .allow_empty(true)
-        .interact_text()
-        .unwrap_or_else(|e| panic!("{e}"));
+        .interact_text()?;
 
     let project = if project_input.is_empty() {
         None
@@ -120,8 +116,7 @@ pub async fn init() {
     let region: String = Input::with_theme(&theme)
         .with_prompt("Default region")
         .default("region-eu".into())
-        .interact_text()
-        .unwrap_or_else(|e| panic!("{e}"));
+        .interact_text()?;
 
     // --- Write config ---
     let config = AppConfig {
@@ -131,32 +126,30 @@ pub async fn init() {
         region,
     };
 
-    let config_dir = config_path.parent().expect("Config path has no parent");
-    std::fs::create_dir_all(config_dir)
-        .unwrap_or_else(|e| panic!("Failed to create config directory: {e}"));
+    let config_dir = config_path.parent().ok_or("Config path has no parent")?;
+    std::fs::create_dir_all(config_dir)?;
 
-    let yaml =
-        serde_yml::to_string(&config).unwrap_or_else(|e| panic!("Failed to serialize config: {e}"));
+    let yaml = serde_yml::to_string(&config)?;
 
-    std::fs::write(&config_path, yaml)
-        .unwrap_or_else(|e| panic!("Failed to write config file: {e}"));
+    std::fs::write(&config_path, yaml)?;
 
     println!();
     println!("Config written to: {}", config_path.display());
     println!();
     println!("Setup complete! Run `bq-assist --help` to see all available commands.");
     println!();
+
+    Ok(())
 }
 
-fn prompt_service_account_path(theme: &ColorfulTheme) -> String {
+fn prompt_service_account_path(theme: &ColorfulTheme) -> Result<String, Box<dyn std::error::Error>> {
     loop {
         let path: String = Input::with_theme(theme)
             .with_prompt("Absolute path to service account JSON file")
-            .interact_text()
-            .unwrap_or_else(|e| panic!("{e}"));
+            .interact_text()?;
 
         if Path::new(&path).is_absolute() && Path::new(&path).exists() {
-            return path;
+            return Ok(path);
         }
 
         if !Path::new(&path).is_absolute() {
