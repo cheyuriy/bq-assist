@@ -562,7 +562,7 @@ pub mod queries {
 
     #[derive(Tabled, Debug)]
     pub struct QueryJobMetadata {
-        #[tabled(rename = "Job ID")]
+        #[tabled(rename = "Job ID", )]
         pub job_id: String,
 
         #[tabled(rename = "Created At")]

@@ -11,7 +11,7 @@ use crate::models::bigquery::{
 };
 use colored::Colorize;
 use std::io::{self, Write as IoWrite};
-use tabled::{settings::Width, Table};
+use tabled::{Table, settings::{Style, Width, Modify, object::Columns}};
 use terminal_size::{terminal_size, Width as TermWidth};
 
 const STORAGE_TYPES: &[&str] = &["BASE TABLE", "CLONE", "SNAPSHOT", "MATERIALIZED VIEW"];
@@ -32,14 +32,14 @@ pub fn print_clustering(fields: &[String]) {
 }
 
 pub fn print_columns(columns: &[ColumnMetadata]) {
-    println!("{}", Table::new(columns));
+    println!("{}", Table::new(columns).with(Style::modern()));
 }
 
 pub fn print_copies(copies: &[CopyMetadata]) {
     if copies.is_empty() {
         println!("No copies are tracked for this table.");
     } else {
-        println!("{}", Table::new(copies));
+        println!("{}", Table::new(copies).with(Style::modern()));
     }
 }
 
@@ -47,7 +47,7 @@ pub fn print_snapshots(snapshots: &[SnapshotMetadata]) {
     if snapshots.is_empty() {
         println!("No snapshots are tracked for this table.");
     } else {
-        println!("{}", Table::new(snapshots));
+        println!("{}", Table::new(snapshots).with(Style::modern()));
     }
 }
 
@@ -63,11 +63,22 @@ pub fn print_queries(jobs: &[QueryJobMetadata]) {
         println!("No queries found for this table.");
         return;
     }
-    let width = terminal_size()
+    let term_width = terminal_size()
         .map(|(TermWidth(w), _)| w as usize)
         .unwrap_or(120);
+
+    // Minimum widths for fixed columns (Job ID, Created At, User, Statement, State, Data Billed).
+    // modern() style uses 3N+1 chars for borders/padding across N columns.
+    const MIN_WIDTHS: [usize; 6] = [24, 23, 20, 14, 5, 11];
+    let fixed_width: usize = MIN_WIDTHS.iter().sum::<usize>() + (7 * 3 + 1);
+    let query_wrap = term_width.saturating_sub(fixed_width).max(30);
+
     let mut table = Table::new(jobs);
-    table.with(Width::wrap(width));
+    table.with(Style::modern());
+    for (i, &min_w) in MIN_WIDTHS.iter().enumerate() {
+        table.with(Modify::new(Columns::one(i)).with(Width::wrap(min_w).keep_words(true)));
+    }
+    table.with(Modify::new(Columns::one(6)).with(Width::wrap(query_wrap).keep_words(true)));
     println!("{}", table);
 }
 
