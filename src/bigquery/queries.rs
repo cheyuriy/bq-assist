@@ -863,4 +863,58 @@ impl StatsQueries {
         };
         template.render(context).unwrap()
     }
+
+    pub fn dataset_info(region: &str, project: &str, dataset: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_dataset_info.sql").unwrap();
+        let context = context! {
+            region => region,
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn dataset_options(region: &str, project: &str, dataset: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_dataset_options.sql").unwrap();
+        let context = context! {
+            region => region,
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn dataset_tables(project: &str, dataset: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_dataset_tables.sql").unwrap();
+        let context = context! {
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn dataset_storage_aggregate(region: &str, project: &str, dataset: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_dataset_storage.sql").unwrap();
+        let context = context! {
+            region => region,
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+        };
+        template.render(context).unwrap()
+    }
+
+    pub fn dataset_table_sizes(region: &str, project: &str, dataset: &str) -> String {
+        let env = setup();
+        let template = env.get_template("stats_dataset_table_sizes.sql").unwrap();
+        let context = context! {
+            region => region,
+            bigquery_project => project,
+            bigquery_dataset => dataset,
+        };
+        template.render(context).unwrap()
+    }
 }

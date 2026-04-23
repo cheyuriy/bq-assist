@@ -2,3 +2,4 @@
 mod dataset;
 
 pub use dataset::*;
+pub mod stats;

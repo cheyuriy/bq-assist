@@ -237,8 +237,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 output::confirm(&format!("Option '{option}' set to '{value}' on {dataset_ref}"));
             }
             cli::DatasetSubcommands::Stats => {
-                println!("dataset {dataset_ref} stats");
-                // TODO: implement dataset stats command
+                let data = commands::dataset::stats::report(config, &dataset_ref).await?;
+                output::render_dataset_stats(&data);
             }
         },
 

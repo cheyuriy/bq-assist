@@ -718,6 +718,57 @@ pub mod stats {
         pub distinct_count: i64,
         pub frequency: Option<Vec<(String, i64)>>,
     }
+
+    #[derive(Debug)]
+    pub struct DatasetBasicInfo {
+        pub fqn: String,
+        pub location: String,
+        pub created: Option<chrono::DateTime<chrono::Utc>>,
+        pub updated: Option<chrono::DateTime<chrono::Utc>>,
+        pub billing_mode: BillingMode,
+        pub is_primary: Option<bool>,
+        pub primary_replica: Option<String>,
+    }
+
+    #[derive(Debug)]
+    pub struct DatasetExpiryInfo {
+        pub default_partition_expiration_days: Option<f64>,
+        pub default_table_expiration_days: Option<f64>,
+        pub time_travel_hours: Option<i64>,
+    }
+
+    #[derive(Debug)]
+    pub struct DatasetContentInfo {
+        pub total: i64,
+        pub tables: i64,
+        pub views: i64,
+        pub materialized_views: i64,
+        pub clones: i64,
+        pub snapshots: i64,
+        pub external: i64,
+        pub last_modified: Option<chrono::DateTime<chrono::Utc>>,
+        pub active_logical_bytes: i64,
+        pub long_term_logical_bytes: i64,
+        pub total_logical_bytes: i64,
+        pub active_physical_bytes: i64,
+        pub long_term_physical_bytes: i64,
+        pub total_physical_bytes: i64,
+    }
+
+    #[derive(Debug)]
+    pub struct TableSizeEntry {
+        pub table_name: String,
+        pub logical_bytes: i64,
+        pub physical_bytes: i64,
+    }
+
+    pub struct DatasetStatsData {
+        pub basic: DatasetBasicInfo,
+        pub expiry: DatasetExpiryInfo,
+        pub content: DatasetContentInfo,
+        pub table_sizes: Vec<TableSizeEntry>,
+        pub other_options: Vec<OtherOption>,
+    }
 }
 
 pub mod references {

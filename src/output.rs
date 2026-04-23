@@ -4,8 +4,9 @@ use crate::models::bigquery::{
     queries::{format_bytes, QueryJobMetadata},
     snapshot::SnapshotMetadata,
     stats::{
-        BasicInfo, BillingMode, BinCount, CategoryStats, ClusteringInfo, ColumnMetaInfo, DeepStats,
-        OtherOption, PartitioningInfo, SizeInfo, TableStatsData,
+        BasicInfo, BillingMode, BinCount, CategoryStats, ClusteringInfo, ColumnMetaInfo,
+        DatasetBasicInfo, DatasetContentInfo, DatasetExpiryInfo, DatasetStatsData, DeepStats,
+        OtherOption, PartitioningInfo, SizeInfo, TableSizeEntry, TableStatsData,
     },
 };
 use colored::Colorize;
@@ -600,5 +601,256 @@ fn format_float(v: f64) -> String {
     } else {
         let s = format!("{:.6}", v);
         s.trim_end_matches('0').trim_end_matches('.').to_string()
+    }
+}
+
+// ─── Dataset stats renderers ─────────────────────────────────────────────────
+
+pub fn render_dataset_stats(data: &DatasetStatsData) {
+    render_dataset_basic(&data.basic);
+
+    println!();
+    render_dataset_expiry(&data.expiry);
+
+    println!();
+    render_dataset_content(&data.content, &data.basic.billing_mode);
+
+    if !data.table_sizes.is_empty() {
+        println!();
+        render_dataset_table_sizes(&data.table_sizes, &data.basic.billing_mode);
+    }
+
+    println!();
+    render_other_options(&data.other_options);
+}
+
+fn render_dataset_basic(basic: &DatasetBasicInfo) {
+    section("Basic Information");
+    info_line("Name", &format!("`{}`", basic.fqn).green().to_string());
+    info_line("Location", &basic.location.yellow().to_string());
+    info_line(
+        "Created",
+        &basic
+            .created
+            .map(|d| d.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+            .unwrap_or_else(|| "-".into()),
+    );
+    info_line(
+        "Last modified",
+        &basic
+            .updated
+            .map(|d| d.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+            .unwrap_or_else(|| "-".into()),
+    );
+
+    let mode = match basic.billing_mode {
+        BillingMode::Logical => "LOGICAL".green().bold().to_string(),
+        BillingMode::Physical => "PHYSICAL".green().bold().to_string(),
+    };
+    println!("  {} {}: {}", "➤".green(), "Billing mode".bold(), mode);
+
+    match basic.is_primary {
+        None => {}
+        Some(true) => println!(
+            "  {} {}",
+            "✓".green(),
+            "Primary replica".green().bold()
+        ),
+        Some(false) => {
+            let primary = basic
+                .primary_replica
+                .as_deref()
+                .unwrap_or("(unknown)");
+            println!(
+                "  {} {}: {}",
+                "ℹ".cyan(),
+                "Primary replica".bold(),
+                format!("✗ no (primary: `{}`)", primary).dimmed()
+            );
+        }
+    }
+}
+
+fn render_dataset_expiry(expiry: &DatasetExpiryInfo) {
+    section("Data Retention");
+
+    match expiry.default_partition_expiration_days {
+        Some(days) => info_line(
+            "Default partition expiration",
+            &format!("{} days", days).to_string(),
+        ),
+        None => println!(
+            "  {} {}: {}",
+            "✗".red(),
+            "Default partition expiration".bold(),
+            "not set".dimmed()
+        ),
+    }
+
+    match expiry.default_table_expiration_days {
+        Some(days) => info_line(
+            "Default table expiration",
+            &format!("{} days", days).to_string(),
+        ),
+        None => println!(
+            "  {} {}: {}",
+            "✗".red(),
+            "Default table expiration".bold(),
+            "not set".dimmed()
+        ),
+    }
+
+    match expiry.time_travel_hours {
+        Some(hours) => {
+            let days = hours / 24;
+            let label = if days > 0 {
+                format!("{} hours ({} days)", hours, days)
+            } else {
+                format!("{} hours", hours)
+            };
+            println!(
+                "  {} {}: {}",
+                "✓".green(),
+                "Time travel".bold(),
+                label.green()
+            );
+        }
+        None => println!(
+            "  {} {} {}",
+            "⚠".yellow().bold(),
+            "Time travel:".bold(),
+            "not set — data recovery may be limited!".yellow()
+        ),
+    }
+}
+
+fn render_dataset_content(content: &DatasetContentInfo, billing_mode: &BillingMode) {
+    section("Content");
+
+    println!(
+        "  {} {}: {}",
+        "ℹ".cyan(),
+        "Total entities".bold(),
+        format_number(content.total)
+    );
+    let breakdown = [
+        ("Tables", content.tables),
+        ("Views", content.views),
+        ("Materialized views", content.materialized_views),
+        ("Clones", content.clones),
+        ("Snapshots", content.snapshots),
+        ("External", content.external),
+    ];
+    for (label, count) in &breakdown {
+        println!(
+            "    {} {}: {}",
+            "•".cyan(),
+            label.bold(),
+            format_number(*count)
+        );
+    }
+
+    println!();
+    match content.last_modified {
+        Some(dt) => info_line(
+            "Last content update",
+            &dt.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+        ),
+        None => println!(
+            "  {} {}: {}",
+            "✗".red(),
+            "Last content update".bold(),
+            "no data".dimmed()
+        ),
+    }
+
+    println!();
+    let logical_highlight = *billing_mode == BillingMode::Logical;
+    let physical_highlight = *billing_mode == BillingMode::Physical;
+    let long_term_pct_logical = percent(content.long_term_logical_bytes, content.total_logical_bytes);
+    let long_term_pct_physical = percent(content.long_term_physical_bytes, content.total_physical_bytes);
+
+    render_size_row("Logical — total", content.total_logical_bytes, None, logical_highlight);
+    render_size_row("Logical — active", content.active_logical_bytes, None, logical_highlight);
+    render_size_row(
+        "Logical — long-term",
+        content.long_term_logical_bytes,
+        Some(long_term_pct_logical),
+        logical_highlight,
+    );
+    render_size_row("Physical — total", content.total_physical_bytes, None, physical_highlight);
+    render_size_row("Physical — active", content.active_physical_bytes, None, physical_highlight);
+    render_size_row(
+        "Physical — long-term",
+        content.long_term_physical_bytes,
+        Some(long_term_pct_physical),
+        physical_highlight,
+    );
+}
+
+fn render_dataset_table_sizes(sizes: &[TableSizeEntry], billing_mode: &BillingMode) {
+    section("Table Size Distribution (top 20)");
+
+    let mut sorted: Vec<&TableSizeEntry> = sizes.iter().collect();
+    sorted.sort_by(|a, b| {
+        let key = |e: &&TableSizeEntry| match billing_mode {
+            BillingMode::Physical => e.physical_bytes,
+            BillingMode::Logical => e.logical_bytes,
+        };
+        key(b).cmp(&key(a))
+    });
+
+    let max_bytes = sorted
+        .iter()
+        .map(|e| match billing_mode {
+            BillingMode::Physical => e.physical_bytes,
+            BillingMode::Logical => e.logical_bytes,
+        })
+        .max()
+        .unwrap_or(1)
+        .max(1);
+
+    const BAR_WIDTH: usize = 20;
+    const NAME_WIDTH: usize = 40;
+    const SIZE_WIDTH: usize = 12;
+
+    let logical_header = if *billing_mode == BillingMode::Logical {
+        "Logical".green().bold().to_string()
+    } else {
+        "Logical".bold().to_string()
+    };
+    let physical_header = if *billing_mode == BillingMode::Physical {
+        "Physical".green().bold().to_string()
+    } else {
+        "Physical".bold().to_string()
+    };
+    println!(
+        "  {:<NAME_WIDTH$}  {:<SIZE_WIDTH$}  {:<SIZE_WIDTH$}",
+        "Table".bold(),
+        logical_header,
+        physical_header
+    );
+
+    for entry in sorted {
+        let bar_bytes = match billing_mode {
+            BillingMode::Physical => entry.physical_bytes,
+            BillingMode::Logical => entry.logical_bytes,
+        };
+        let bar_len = (bar_bytes as f64 / max_bytes as f64 * BAR_WIDTH as f64) as usize;
+        let bar = "█".repeat(bar_len);
+
+        let name = if entry.table_name.len() > NAME_WIDTH {
+            format!("{}…", &entry.table_name[..NAME_WIDTH - 1])
+        } else {
+            entry.table_name.clone()
+        };
+
+        println!(
+            "  {:<NAME_WIDTH$}  {:<SIZE_WIDTH$}  {:<SIZE_WIDTH$}  {}",
+            name,
+            format_bytes(entry.logical_bytes),
+            format_bytes(entry.physical_bytes),
+            bar.cyan()
+        );
     }
 }
