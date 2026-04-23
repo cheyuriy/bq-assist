@@ -6,7 +6,6 @@ use crate::errors::ValidationError;
 use crate::models::bigquery::columns::{ColumnMetadata, Type};
 use crate::models::config::AppConfig;
 use crate::models::bigquery::references::TableRef;
-use tabled::Table;
 use tokio::time::{Duration, sleep};
 
 fn map_column_row(row: google_cloud_bigquery::query::row::Row) -> ColumnMetadata {
@@ -37,7 +36,7 @@ fn map_column_row(row: google_cloud_bigquery::query::row::Row) -> ColumnMetadata
     )
 }
 
-pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<Vec<ColumnMetadata>, Box<dyn std::error::Error>> {
     let (bq_client, project_id) = client::get_client(&config).await?;
     let project = table_ref.project.as_deref().unwrap_or(&project_id);
     validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
@@ -54,10 +53,7 @@ pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn
 
     let columns = executor::query_collect(&bq_client, &project_id, query, map_column_row).await?;
 
-    let table = Table::new(columns);
-    println!("{}", table);
-
-    Ok(())
+    Ok(columns)
 }
 
 pub async fn add(
@@ -122,8 +118,6 @@ pub async fn rename(config: AppConfig, table_ref: &TableRef, name: &str, new_nam
         .await?
         .ok_or("Can't find metadata about that column")?;
 
-    println!("{column:?}");
-
     let rename_query = queries::ColumnsQueries::rename_column(
         table_ref.project.as_deref().unwrap_or(&project_id),
         table_ref.dataset.as_str(),
@@ -170,11 +164,9 @@ pub async fn cast(config: AppConfig, table_ref: &TableRef, name: &str, field_typ
     executor::execute(&bq_client, &project_id, first_query).await?;
 
     if let Some(second_query) = second_query {
-        print!(
-            "Sleeping for 10 seconds due to BigQuery limitations on the rate of updates per table..."
-        );
+        crate::output::print_cast_waiting();
         sleep(Duration::from_secs(10)).await;
-        println!(" Done!");
+        crate::output::print_cast_done();
 
         executor::execute(&bq_client, &project_id, second_query).await?;
     }

@@ -103,7 +103,6 @@ pub async fn restore(
             executor::execute(&bq_client, &project_id, rewind_query).await?;
         }
     } else {
-        println!("Table doesn't exist");
         if let Some(duration) = rewind_period {
             let duration_in_secs = duration.as_secs();
 

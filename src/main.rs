@@ -3,6 +3,7 @@ mod cli;
 mod commands;
 mod errors;
 mod models;
+mod output;
 
 use clap::Parser;
 use cli::CLI;
@@ -24,24 +25,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             cli::TableSubcommands::Clustering { command } => match command {
                 Some(cli::ClusteringSubcommands::Add { fields }) => {
                     commands::table::clustering::add(config, &table_ref, fields).await?;
+                    output::confirm(&format!("Clustering updated on {table_ref}"));
                 }
                 Some(cli::ClusteringSubcommands::Remove) => {
                     commands::table::clustering::remove(config, &table_ref).await?;
+                    output::confirm(&format!("Clustering removed from {table_ref}"));
                 }
                 None => {
-                    commands::table::clustering::list(config, &table_ref).await?;
+                    let fields = commands::table::clustering::list(config, &table_ref).await?;
+                    output::print_clustering(&fields);
                 }
             },
 
             cli::TableSubcommands::Partitioning { command } => match command {
                 Some(cli::PartitioningSubcommands::Partitioning(partition)) => {
                     commands::table::partitioning::add(config, &table_ref, Some(&partition)).await?;
+                    output::confirm(&format!("Partitioning set on {table_ref}"));
                 }
                 Some(cli::PartitioningSubcommands::Remove) => {
                     commands::table::partitioning::remove(config, &table_ref).await?;
+                    output::confirm(&format!("Partitioning removed from {table_ref}"));
                 }
                 None => {
-                    commands::table::partitioning::list(config, &table_ref).await?;
+                    let clause = commands::table::partitioning::list(config, &table_ref).await?;
+                    output::print_partitioning(clause.as_deref());
                 }
             },
 
@@ -59,18 +66,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         default_value,
                     )
                     .await?;
+                    output::confirm(&format!("Column '{name}' added to {table_ref}"));
                 }
                 Some(cli::ColumnsSubcommands::Rename { name, new_name }) => {
                     commands::table::columns::rename(config, &table_ref, &name, &new_name).await?;
+                    output::confirm(&format!("Column '{name}' renamed to '{new_name}' in {table_ref}"));
                 }
                 Some(cli::ColumnsSubcommands::Remove { name }) => {
                     commands::table::columns::remove(config, &table_ref, &name).await?;
+                    output::confirm(&format!("Column '{name}' removed from {table_ref}"));
                 }
                 Some(cli::ColumnsSubcommands::Cast { name, field_type }) => {
                     commands::table::columns::cast(config, &table_ref, &name, &field_type).await?;
+                    output::confirm(&format!("Column '{name}' cast to {field_type} in {table_ref}"));
                 }
                 None => {
-                    commands::table::columns::list(config, &table_ref).await?;
+                    let columns = commands::table::columns::list(config, &table_ref).await?;
+                    output::print_columns(&columns);
                 }
             },
 
@@ -82,6 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             } => {
                 commands::table::restore(config, &table_ref, &rewind, &copy, &snapshot, &archive)
                     .await?;
+                output::confirm(&format!("{table_ref} restored"));
             }
 
             cli::TableSubcommands::Snapshots { command } => match command {
@@ -92,19 +105,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     timestamp,
                     no_track,
                 }) => {
-                    println!(
-                        "table {table_ref} snapshots add {name:?} {dataset:?} {rewind:?} {timestamp:?} {no_track:?}"
-                    );
                     commands::table::snapshots::add(
                         config, &table_ref, name, dataset, rewind, timestamp, no_track,
                     )
                     .await?;
+                    output::confirm(&format!("Snapshot created for {table_ref}"));
                 }
                 Some(cli::SnapshotsSubcommands::Remove { name }) => {
                     commands::table::snapshots::remove(config, &table_ref, &name).await?;
+                    output::confirm(&format!("Snapshot '{name}' removed from {table_ref}"));
                 }
                 None => {
-                    commands::table::snapshots::list(config, &table_ref).await?;
+                    let snapshots = commands::table::snapshots::list(config, &table_ref).await?;
+                    output::print_snapshots(&snapshots);
                 }
             },
 
@@ -115,17 +128,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     no_track,
                 }) => {
                     commands::table::copy::add(config, &table_ref, name, dataset, no_track).await?;
+                    output::confirm(&format!("Copy created for {table_ref}"));
                 }
                 Some(cli::CopySubcommands::Remove { name }) => {
                     commands::table::copy::remove(config, &table_ref, &name).await?;
+                    output::confirm(&format!("Copy '{name}' removed from {table_ref}"));
                 }
                 None => {
-                    commands::table::copy::list(config, &table_ref).await?;
+                    let copies = commands::table::copy::list(config, &table_ref).await?;
+                    output::print_copies(&copies);
                 }
             },
 
             cli::TableSubcommands::Options { option, value } => {
                 commands::table::set_option(config, &table_ref, &option, &value).await?;
+                output::confirm(&format!("Option '{option}' set to '{value}' on {table_ref}"));
             }
 
             cli::TableSubcommands::Queries { command } => match command {
@@ -137,10 +154,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     to,
                     limit,
                 } => {
-                    commands::table::queries::read(
+                    let jobs = commands::table::queries::read(
                         config, &table_ref, single, user, period, from, to, limit,
                     )
                     .await?;
+                    output::print_queries(&jobs);
                 }
                 cli::QueriesSubcommand::Modify {
                     query_type,
@@ -151,10 +169,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     limit,
                     related,
                 } => {
-                    commands::table::queries::modify(
+                    let jobs = commands::table::queries::modify(
                         config, &table_ref, query_type, user, period, from, to, limit, related,
                     )
                     .await?;
+                    output::print_queries(&jobs);
                 }
             },
 
@@ -180,7 +199,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .await?;
                 }
                 None => {
-                    commands::table::stats::report(config, &table_ref, with_ddl).await?;
+                    let data = commands::table::stats::report(config, &table_ref, with_ddl).await?;
+                    output::render_table_stats(&data);
                 }
             },
 
@@ -204,6 +224,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             cli::TableSubcommands::Rename { new_name } => {
                 commands::table::rename(config, &table_ref, &new_name).await?;
+                output::confirm(&format!("Table renamed to '{new_name}'"));
             }
         },
 
@@ -212,8 +233,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             dataset_subcommands,
         } => match dataset_subcommands {
             cli::DatasetSubcommands::Options { option, value } => {
-                println!("dataset {dataset_ref} options {option} {value}");
                 commands::dataset::set_option(config, &dataset_ref, &option, &value).await?;
+                output::confirm(&format!("Option '{option}' set to '{value}' on {dataset_ref}"));
             }
             cli::DatasetSubcommands::Stats {} => {
                 println!("dataset {dataset_ref} stats");

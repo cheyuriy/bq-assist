@@ -28,8 +28,6 @@ pub async fn set_option(
         option_value,
     );
 
-    println!("{option_query}");
-
     executor::execute(&bq_client, &project_id, option_query).await?;
 
     Ok(())

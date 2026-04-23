@@ -507,7 +507,7 @@ pub mod copy {
         #[tabled(rename = "Table")]
         pub table: String,
 
-        #[tabled(rename = "Table")]
+        #[tabled(rename = "Created At")]
         pub creation_time: chrono::DateTime<chrono::Utc>,
 
         #[tabled(rename = "Origin")]
@@ -649,6 +649,73 @@ pub mod stats {
         pub name: String,
         pub value: String,
     }
+
+    pub struct TableStatsData {
+        pub basic: BasicInfo,
+        pub size: Option<SizeInfo>,
+        pub partitioning: Option<PartitioningInfo>,
+        pub clustering: Option<ClusteringInfo>,
+        pub other_options: Vec<OtherOption>,
+        pub ddl: Option<String>,
+    }
+
+    pub struct ColumnMetaInfo {
+        pub data_type: String,
+        pub is_nullable: bool,
+        pub clustering_position: Option<i64>,
+        pub is_partitioned: bool,
+        pub partition_clause: Option<String>,
+    }
+
+    pub struct BinCount {
+        pub lower: f64,
+        pub upper: f64,
+        pub count: i64,
+    }
+
+    pub enum DeepStats {
+        Numeric {
+            null_pct: f64,
+            null_count: i64,
+            total: i64,
+            min: f64,
+            max: f64,
+            avg: f64,
+            bins: Vec<BinCount>,
+        },
+        Str {
+            null_pct: f64,
+            null_count: i64,
+            total: i64,
+            min_len: i64,
+            max_len: i64,
+            avg_len: f64,
+        },
+        Datetime {
+            null_pct: f64,
+            null_count: i64,
+            total: i64,
+            earliest: String,
+            latest: String,
+            distribution: Vec<(String, i64)>,
+        },
+        Boolean {
+            null_pct: f64,
+            null_count: i64,
+            total: i64,
+            true_pct: f64,
+        },
+        Generic {
+            null_pct: f64,
+            null_count: i64,
+            total: i64,
+        },
+    }
+
+    pub struct CategoryStats {
+        pub distinct_count: i64,
+        pub frequency: Option<Vec<(String, i64)>>,
+    }
 }
 
 pub mod references {
@@ -761,7 +828,7 @@ pub mod snapshot {
         #[tabled(rename = "Table")]
         pub table: String,
 
-        #[tabled(rename = "Table")]
+        #[tabled(rename = "Created At")]
         pub creation_time: chrono::DateTime<chrono::Utc>,
 
         #[tabled(rename = "Origin")]

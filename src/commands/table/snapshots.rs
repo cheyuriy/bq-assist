@@ -9,7 +9,6 @@ use chrono::DateTime;
 use chrono::Utc;
 use rand;
 use std::time::Duration;
-use tabled::Table;
 
 async fn get_tracked_snapshots(config: &AppConfig, table_ref: &TableRef) -> Result<Vec<SnapshotMetadata>, Box<dyn std::error::Error>> {
     let (bq_client, project_id) = client::get_client(&config).await?;
@@ -34,17 +33,14 @@ async fn get_tracked_snapshots(config: &AppConfig, table_ref: &TableRef) -> Resu
     Ok(snapshots)
 }
 
-pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<Vec<SnapshotMetadata>, Box<dyn std::error::Error>> {
     let (bq_client, project_id) = client::get_client(&config).await?;
     let project = table_ref.project.as_deref().unwrap_or(&project_id);
     validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
 
     let snapshots = get_tracked_snapshots(&config, table_ref).await?;
 
-    let table = Table::new(snapshots);
-    println!("{}", table);
-
-    Ok(())
+    Ok(snapshots)
 }
 
 pub async fn add(

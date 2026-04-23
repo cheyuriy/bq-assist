@@ -7,7 +7,7 @@ use crate::models::config::AppConfig;
 use crate::models::bigquery::references::TableRef;
 use regex::Regex;
 
-pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<Option<String>, Box<dyn std::error::Error>> {
     let (bq_client, project_id) = client::get_client(&config).await?;
     let project = table_ref.project.as_deref().unwrap_or(&project_id);
     validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
@@ -26,9 +26,8 @@ pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn
 
     let re = Regex::new(r"(?i)(PARTITION\s+BY\s+[^\n;]+)").unwrap();
     let partitioning_clause = re.captures(&ddl).map(|caps| caps[1].trim().to_string());
-    println!("{partitioning_clause:?}");
 
-    Ok(())
+    Ok(partitioning_clause)
 }
 
 pub async fn add(config: AppConfig, table_ref: &TableRef, partitioning: Option<&Partitioning>) -> Result<(), Box<dyn std::error::Error>> {

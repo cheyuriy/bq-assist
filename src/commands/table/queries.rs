@@ -8,7 +8,6 @@ use chrono::{DateTime, Utc};
 use google_cloud_bigquery::client::Client;
 use google_cloud_bigquery::http::job::query::QueryRequest;
 use google_cloud_bigquery::query::row::Row;
-use tabled::Table;
 
 fn resolve_time_window(
     period: Option<std::time::Duration>,
@@ -62,7 +61,7 @@ pub async fn read(
     from: Option<DateTime<Utc>>,
     to: Option<DateTime<Utc>>,
     limit: u64,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Vec<QueryJobMetadata>, Box<dyn std::error::Error>> {
     let region = config.region.clone();
     let (bq_client, project_id) = client::get_client(&config).await?;
     let project = table_ref.project.as_deref().unwrap_or(&project_id);
@@ -79,11 +78,8 @@ pub async fn read(
         single,
         limit,
     );
-    println!("{sql}");
     let jobs = run_jobs_query(&bq_client, &project_id, sql).await?;
-    println!("{}", Table::new(jobs));
-
-    Ok(())
+    Ok(jobs)
 }
 
 pub async fn modify(
@@ -96,7 +92,7 @@ pub async fn modify(
     to: Option<DateTime<Utc>>,
     limit: u64,
     related: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Vec<QueryJobMetadata>, Box<dyn std::error::Error>> {
     let region = config.region.clone();
     let (bq_client, project_id) = client::get_client(&config).await?;
     let project = table_ref.project.as_deref().unwrap_or(&project_id);
@@ -114,9 +110,6 @@ pub async fn modify(
         related,
         limit,
     );
-    println!("{sql}");
     let jobs = run_jobs_query(&bq_client, &project_id, sql).await?;
-    println!("{}", Table::new(jobs));
-
-    Ok(())
+    Ok(jobs)
 }

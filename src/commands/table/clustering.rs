@@ -5,7 +5,7 @@ use crate::bigquery::validators;
 use crate::models::config::AppConfig;
 use crate::models::bigquery::references::TableRef;
 
-pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let (bq_client, project_id) = client::get_client(&config).await?;
     let project = table_ref.project.as_deref().unwrap_or(&project_id);
     validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
@@ -20,15 +20,11 @@ pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn
     );
 
     let results = executor::query_collect(&bq_client, &project_id, query, |row| {
-        row.column::<String>(0)
+        row.column::<String>(0).unwrap_or_default()
     })
     .await?;
 
-    for data in results {
-        println!("{data:?}");
-    }
-
-    Ok(())
+    Ok(results)
 }
 
 pub async fn add(config: AppConfig, table_ref: &TableRef, fields: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {

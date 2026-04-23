@@ -6,7 +6,6 @@ use crate::models::bigquery::copy::CopyMetadata;
 use crate::models::config::AppConfig;
 use crate::models::bigquery::references::{DatasetRef, TableRef};
 use rand;
-use tabled::Table;
 
 async fn get_tracked_copies(config: &AppConfig, table_ref: &TableRef) -> Result<Vec<CopyMetadata>, Box<dyn std::error::Error>> {
     let (bq_client, project_id) = client::get_client(&config).await?;
@@ -31,17 +30,14 @@ async fn get_tracked_copies(config: &AppConfig, table_ref: &TableRef) -> Result<
     Ok(copies)
 }
 
-pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<Vec<CopyMetadata>, Box<dyn std::error::Error>> {
     let (bq_client, project_id) = client::get_client(&config).await?;
     let project = table_ref.project.as_deref().unwrap_or(&project_id);
     validators::ensure_table_exists(&bq_client, project, &table_ref.dataset, &table_ref.table).await?;
 
     let copies = get_tracked_copies(&config, table_ref).await?;
 
-    let table = Table::new(copies);
-    println!("{}", table);
-
-    Ok(())
+    Ok(copies)
 }
 
 pub async fn add(
@@ -80,8 +76,6 @@ pub async fn add(
         },
         rand::random_range(1..=1_000_000),
     );
-
-    println!("{query}");
 
     executor::execute(&bq_client, &project_id, query).await?;
 
