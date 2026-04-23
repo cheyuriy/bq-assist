@@ -4,8 +4,7 @@ use crate::bigquery::queries;
 use crate::bigquery::validators;
 use crate::models::bigquery::copy::CopyMetadata;
 use crate::models::config::AppConfig;
-use crate::models::schema::DatasetRef;
-use crate::models::schema::TableRef;
+use crate::models::bigquery::references::{DatasetRef, TableRef};
 use rand;
 use tabled::Table;
 

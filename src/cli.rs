@@ -1,6 +1,6 @@
 use crate::errors::ArgumentsParsingError;
 use crate::models::bigquery;
-use crate::models::schema::{DatasetRef, TableRef};
+use crate::models::bigquery::references::{DatasetRef, TableRef};
 use chrono;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::str::FromStr;

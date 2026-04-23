@@ -4,7 +4,7 @@ use crate::bigquery::queries;
 use crate::bigquery::validators;
 use crate::models::bigquery::partitioning::Partitioning;
 use crate::models::config::AppConfig;
-use crate::models::schema::TableRef;
+use crate::models::bigquery::references::TableRef;
 use regex::Regex;
 
 pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn std::error::Error>> {

@@ -3,7 +3,7 @@ use crate::bigquery::executor;
 use crate::bigquery::queries;
 use crate::bigquery::validators;
 use crate::models::config::AppConfig;
-use crate::models::schema::TableRef;
+use crate::models::bigquery::references::TableRef;
 
 pub async fn list(config: AppConfig, table_ref: &TableRef) -> Result<(), Box<dyn std::error::Error>> {
     let (bq_client, project_id) = client::get_client(&config).await?;

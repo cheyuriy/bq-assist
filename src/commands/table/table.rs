@@ -5,7 +5,7 @@ use crate::bigquery::validators;
 use crate::errors::ValidationError;
 use crate::models::bigquery::options::TableOption;
 use crate::models::config::AppConfig;
-use crate::models::schema::TableRef;
+use crate::models::bigquery::references::TableRef;
 use google_cloud_bigquery::http::error;
 use google_cloud_bigquery::http::job::{
     CreateDisposition, Job, JobConfiguration, JobConfigurationSourceTable,

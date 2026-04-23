@@ -5,7 +5,7 @@ use crate::bigquery::validators;
 use crate::errors::ValidationError;
 use crate::models::bigquery::columns::{ColumnMetadata, Type};
 use crate::models::config::AppConfig;
-use crate::models::schema::TableRef;
+use crate::models::bigquery::references::TableRef;
 use tabled::Table;
 use tokio::time::{Duration, sleep};
 

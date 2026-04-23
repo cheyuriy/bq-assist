@@ -3,7 +3,7 @@ use crate::bigquery::queries;
 use crate::bigquery::validators;
 use crate::models::bigquery::queries::{QueryJobMetadata, format_bytes};
 use crate::models::config::AppConfig;
-use crate::models::schema::TableRef;
+use crate::models::bigquery::references::TableRef;
 use chrono::{DateTime, Utc};
 use google_cloud_bigquery::client::Client;
 use google_cloud_bigquery::http::job::query::QueryRequest;

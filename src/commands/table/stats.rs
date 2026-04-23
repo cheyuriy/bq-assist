@@ -9,7 +9,7 @@ use crate::models::bigquery::stats::{
     BasicInfo, BillingMode, ClusteringInfo, ExternalInfo, OtherOption, PartitioningInfo, SizeInfo,
 };
 use crate::models::config::AppConfig;
-use crate::models::schema::TableRef;
+use crate::models::bigquery::references::TableRef;
 use chrono::{DateTime, Utc};
 use colored::Colorize;
 use google_cloud_bigquery::client::Client;

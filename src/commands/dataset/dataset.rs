@@ -5,7 +5,7 @@ use crate::bigquery::validators;
 use crate::errors::ValidationError;
 use crate::models::bigquery::options::DatasetOption;
 use crate::models::config::AppConfig;
-use crate::models::schema::DatasetRef;
+use crate::models::bigquery::references::DatasetRef;
 
 pub async fn set_option(
     config: AppConfig,
