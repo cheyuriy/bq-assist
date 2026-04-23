@@ -131,6 +131,7 @@ pub mod columns {
         #[value(alias = "geo")]
         Geography,
 
+        #[allow(clippy::upper_case_acronyms)]
         JSON,
         Range,
     }
@@ -219,6 +220,7 @@ pub mod columns {
     }
 
     impl ColumnMetadata {
+        #[allow(clippy::too_many_arguments)]
         pub fn new(
             name: &str,
             ordinal_position: u8,
@@ -231,13 +233,13 @@ pub mod columns {
         ) -> Self {
             ColumnMetadata {
                 name: name.to_string(),
-                ordinal_position: ordinal_position,
+                ordinal_position,
                 is_nullable: is_nullable == "YES",
                 data_type: <Type as FromStr>::from_str(data_type).unwrap(),
                 is_hidden: is_hidden == "YES",
                 is_partitioning_column: is_partitioning_column == "YES",
-                clustering_ordinal_position: clustering_ordinal_position,
-                column_default: column_default,
+                clustering_ordinal_position,
+                column_default,
             }
         }
     }
@@ -524,7 +526,7 @@ pub mod copy {
             origin: &str,
         ) -> Self {
             CopyMetadata {
-                id: id,
+                id,
                 project: table_catalog.to_string(),
                 dataset: table_schema.to_string(),
                 table: table_name.to_string(),
@@ -768,7 +770,7 @@ pub mod references {
                 if let Some(ref ref_project) = self.project {
                     ref_project.to_lowercase()
                 } else {
-                    project.as_deref().unwrap().to_lowercase()
+                    project.unwrap().to_lowercase()
                 },
                 self.dataset.to_lowercase(),
                 self.table.to_lowercase()
@@ -845,7 +847,7 @@ pub mod snapshot {
             origin: &str,
         ) -> Self {
             SnapshotMetadata {
-                id: id,
+                id,
                 project: table_catalog.to_string(),
                 dataset: table_schema.to_string(),
                 table: table_name.to_string(),

@@ -1,13 +1,13 @@
 use crate::errors::ArgumentsParsingError;
 use crate::models::bigquery;
 use crate::models::bigquery::references::{DatasetRef, TableRef};
-use chrono;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::str::FromStr;
 use std::time::Duration;
 
 #[derive(Parser, Debug)]
 #[command(version, about = "CLI to run complex operations in BigQuery", long_about = None, disable_help_subcommand = true)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct CLI {
     #[command(subcommand)]
     pub commands: Commands,

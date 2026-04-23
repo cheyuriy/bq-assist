@@ -236,7 +236,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 commands::dataset::set_option(config, &dataset_ref, &option, &value).await?;
                 output::confirm(&format!("Option '{option}' set to '{value}' on {dataset_ref}"));
             }
-            cli::DatasetSubcommands::Stats {} => {
+            cli::DatasetSubcommands::Stats => {
                 println!("dataset {dataset_ref} stats");
                 // TODO: implement dataset stats command
             }
@@ -372,7 +372,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // TODO: implement compare command
         }
 
-        cli::Commands::Checks {} => {
+        cli::Commands::Checks => {
             println!("checks");
             // TODO: implement checks command
         }

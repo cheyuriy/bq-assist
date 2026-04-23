@@ -1,8 +1,8 @@
 use chrono::format::ParseError;
-use config;
 use humantime::DurationError;
 
 #[derive(Debug)]
+#[allow(clippy::enum_variant_names)]
 pub enum ArgumentsParsingError {
     InvalidTableRefFormat,
     InvalidDatasetRefFormat,

@@ -52,6 +52,7 @@ async fn run_jobs_query(
     Ok(jobs)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn read(
     config: AppConfig,
     table_ref: &TableRef,
@@ -82,6 +83,7 @@ pub async fn read(
     Ok(jobs)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn modify(
     config: AppConfig,
     table_ref: &TableRef,

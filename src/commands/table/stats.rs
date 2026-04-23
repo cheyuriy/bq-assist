@@ -326,6 +326,7 @@ fn extract_partition_column(clause: &str) -> Option<String> {
 
 // ─── Column stats ─────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub async fn column(
     config: AppConfig,
     table_ref: &TableRef,
@@ -466,6 +467,7 @@ async fn fetch_column_info(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn fetch_deep_stats(
     client: &Client,
     project_id: &str,
@@ -629,6 +631,7 @@ async fn fetch_string(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn fetch_datetime(
     client: &Client,
     project_id: &str,

@@ -32,7 +32,7 @@ fn config_dir() -> Result<PathBuf, ConfigurationError> {
     if let Ok(dir) = env::var(format!("{}_CONFIG_DIR", env!("CARGO_PKG_NAME"))) {
         let dir = PathBuf::from(dir);
         if dir.exists() {
-            Ok(PathBuf::from(dir))
+            Ok(dir)
         } else {
             Err(ConfigurationError::ConfigDirNotFound)
         }

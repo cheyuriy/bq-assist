@@ -11,7 +11,7 @@ use rand;
 use std::time::Duration;
 
 async fn get_tracked_snapshots(config: &AppConfig, table_ref: &TableRef) -> Result<Vec<SnapshotMetadata>, Box<dyn std::error::Error>> {
-    let (bq_client, project_id) = client::get_client(&config).await?;
+    let (bq_client, project_id) = client::get_client(config).await?;
 
     let query = queries::SnapshotsQueries::list(
         &config.region,

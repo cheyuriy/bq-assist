@@ -8,7 +8,7 @@ use crate::models::bigquery::references::{DatasetRef, TableRef};
 use rand;
 
 async fn get_tracked_copies(config: &AppConfig, table_ref: &TableRef) -> Result<Vec<CopyMetadata>, Box<dyn std::error::Error>> {
-    let (bq_client, project_id) = client::get_client(&config).await?;
+    let (bq_client, project_id) = client::get_client(config).await?;
 
     let query = queries::CopyQueries::list(
         &config.region,

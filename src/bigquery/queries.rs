@@ -21,8 +21,8 @@ impl ClusteringQueries {
             bigquery_dataset => dataset,
             bigquery_table => table,
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 
     pub fn add_or_remove_clustering(
@@ -35,11 +35,7 @@ impl ClusteringQueries {
     ) -> String {
         let re = Regex::new(r"(?i)(PARTITION\s+BY\s+[^\n;]+)").unwrap();
 
-        let partitioning_clause = if let Some(caps) = re.captures(&ddl) {
-            Some(caps[1].trim().to_string())
-        } else {
-            None
-        };
+        let partitioning_clause = re.captures(ddl).map(|caps| caps[1].trim().to_string());
 
         let clustering_clause = if fields.is_empty() {
             None
@@ -60,8 +56,8 @@ impl ClusteringQueries {
             partitioning_clause => partitioning_clause,
             clustering_clause => clustering_clause
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 }
 
@@ -78,11 +74,7 @@ impl PartitioningQueries {
     ) -> String {
         let re = Regex::new(r"(?i)(CLUSTER\s+BY\s+[^\n;]+)").unwrap();
 
-        let clustering_clause = if let Some(caps) = re.captures(&ddl) {
-            Some(caps[1].trim().to_string())
-        } else {
-            None
-        };
+        let clustering_clause = re.captures(ddl).map(|caps| caps[1].trim().to_string());
 
         let partitioning_clause = match partitioning {
             Some(bigquery::partitioning::Partitioning::Ingestion(
@@ -132,8 +124,8 @@ impl PartitioningQueries {
             partitioning_clause => partitioning_clause,
             clustering_clause => clustering_clause
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 }
 
@@ -158,8 +150,7 @@ impl ColumnsQueries {
             column_type => column_type.to_string(),
             default_clause => default_clause
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        template.render(context).unwrap()
     }
 
     pub fn remove_column(project: &str, dataset: &str, table: &str, column_name: &str) -> String {
@@ -171,8 +162,8 @@ impl ColumnsQueries {
             bigquery_table => table,
             column_name => column_name
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 
     pub fn rename_column(
@@ -195,8 +186,8 @@ impl ColumnsQueries {
             column_type => column_type.to_string(),
             default_clause => default_clause
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 
     pub fn cast_column(
@@ -210,9 +201,9 @@ impl ColumnsQueries {
         let env = setup();
 
         if (*column_type == Type::Integer
-            && (vec![Type::Numeric, Type::BigNumeric, Type::Float]).contains(column_new_type))
+            && ([Type::Numeric, Type::BigNumeric, Type::Float]).contains(column_new_type))
             || (*column_type == Type::Numeric
-                && (vec![Type::BigNumeric, Type::Float]).contains(column_new_type))
+                && ([Type::BigNumeric, Type::Float]).contains(column_new_type))
         {
             let cast_template = env.get_template("table_columns_cast_fast.sql").unwrap();
             let cast_context = context! {
@@ -389,8 +380,8 @@ impl TableQueries {
             bigquery_table => table,
             new_name => new_name
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 
     pub fn set_option(
@@ -428,8 +419,8 @@ impl TableQueries {
             option_name => option.to_string(),
             option_value => value_clause
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 
     pub fn rewind(project: &str, dataset: &str, table: &str, duration: &Duration) -> String {
@@ -443,8 +434,8 @@ impl TableQueries {
             bigquery_table => table,
             interval => duration_seconds
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 }
 
@@ -483,8 +474,8 @@ impl DatasetQueries {
             option_name => option.to_string(),
             option_value => value_clause
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 }
 
@@ -498,8 +489,8 @@ impl CopyQueries {
             region => region,
             table_ref_digest => table_digest,
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 
     pub fn add(
@@ -522,8 +513,8 @@ impl CopyQueries {
             table_ref_digest => table_digest,
             copy_id => copy_id
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 
     pub fn remove(project: &str, dataset: &str, table: &str) -> String {
@@ -534,8 +525,8 @@ impl CopyQueries {
             bigquery_dataset => dataset,
             bigquery_table => table,
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 }
 
@@ -549,10 +540,11 @@ impl SnapshotsQueries {
             region => region,
             table_ref_digest => table_digest,
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn add(
         project: &str,
         dataset: &str,
@@ -575,8 +567,8 @@ impl SnapshotsQueries {
             snapshot_ts => snapshot_ts,
             snapshot_id => snapshot_id
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 
     pub fn remove(project: &str, dataset: &str, table: &str) -> String {
@@ -587,14 +579,15 @@ impl SnapshotsQueries {
             bigquery_dataset => dataset,
             bigquery_table => table,
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 }
 
 pub struct QueriesQueries;
 
 impl QueriesQueries {
+    #[allow(clippy::too_many_arguments)]
     pub fn modify(
         project: &str,
         dataset: &str,
@@ -624,6 +617,7 @@ impl QueriesQueries {
         template.render(context).unwrap()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn read(
         project: &str,
         dataset: &str,
@@ -663,8 +657,8 @@ impl CommonQueries {
             bigquery_dataset => dataset,
             bigquery_table => table,
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 
     pub fn columns(
@@ -681,8 +675,8 @@ impl CommonQueries {
             bigquery_table => table,
             specific_column => specific_column
         };
-        let rendered = template.render(context).unwrap();
-        rendered
+        
+        template.render(context).unwrap()
     }
 }
 

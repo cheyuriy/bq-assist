@@ -17,10 +17,7 @@ fn map_column_row(row: google_cloud_bigquery::query::row::Row) -> ColumnMetadata
         row.column::<String>(10).unwrap().as_str(),
         row.column::<String>(13).unwrap().as_str(),
         match row.column::<String>(14) {
-            Ok(v) => match v.parse::<u8>() {
-                Ok(r) => Some(r),
-                Err(_) => None,
-            },
+            Ok(v) => v.parse::<u8>().ok(),
             Err(_) => None,
         },
         match row.column::<String>(16) {
@@ -76,7 +73,7 @@ pub async fn add(
         table_ref.dataset.as_str(),
         table_ref.table.as_str(),
         name,
-        &field_type,
+        field_type,
         default_value,
     );
 
@@ -158,7 +155,7 @@ pub async fn cast(config: AppConfig, table_ref: &TableRef, name: &str, field_typ
         table_ref.table.as_str(),
         name,
         &column.data_type,
-        &field_type,
+        field_type,
     );
 
     executor::execute(&bq_client, &project_id, first_query).await?;

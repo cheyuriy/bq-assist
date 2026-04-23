@@ -3,7 +3,7 @@ use crate::models::config::AppConfig;
 use google_cloud_bigquery::client::{
     Client, ClientConfig, google_cloud_auth::credentials::CredentialsFile,
 };
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::{env, ops::Deref};
 
 pub async fn get_client(config: &AppConfig) -> Result<(Client, String), ConfigurationError> {
@@ -26,25 +26,23 @@ pub async fn get_client(config: &AppConfig) -> Result<(Client, String), Configur
 
 fn get_service_account_path(config: &AppConfig) -> Result<PathBuf, ConfigurationError> {
     if env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok() {
-        return Ok(PathBuf::from(
+        Ok(PathBuf::from(
             env::var("GOOGLE_APPLICATION_CREDENTIALS").unwrap(),
-        ));
-    } else {
-        if let Some(service_account_path) = &config.service_account_path {
-            let res = PathBuf::from(service_account_path);
-            if res.exists() {
-                Ok(res)
-            } else {
-                Err(ConfigurationError::ServiceAccountNotFound)
-            }
+        ))
+    } else if let Some(service_account_path) = &config.service_account_path {
+        let res = PathBuf::from(service_account_path);
+        if res.exists() {
+            Ok(res)
         } else {
             Err(ConfigurationError::ServiceAccountNotFound)
         }
+    } else {
+        Err(ConfigurationError::ServiceAccountNotFound)
     }
 }
 
 async fn load_service_account(
-    credentials_path: &PathBuf,
+    credentials_path: &Path,
 ) -> Result<(ClientConfig, Option<String>), ConfigurationError> {
     let credentials_file = match CredentialsFile::new_from_file(
         credentials_path.to_str().unwrap().to_string(),
@@ -57,5 +55,5 @@ async fn load_service_account(
     let (config, project_id) = ClientConfig::new_with_credentials(credentials_file)
         .await
         .unwrap();
-    return Ok((config, project_id));
+    Ok((config, project_id))
 }

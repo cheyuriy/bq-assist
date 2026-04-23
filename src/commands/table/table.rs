@@ -102,58 +102,56 @@ pub async fn restore(
 
             executor::execute(&bq_client, &project_id, rewind_query).await?;
         }
-    } else {
-        if let Some(duration) = rewind_period {
-            let duration_in_secs = duration.as_secs();
+    } else if let Some(duration) = rewind_period {
+        let duration_in_secs = duration.as_secs();
 
-            let job = Job {
-                job_reference: JobReference {
-                    project_id: table_ref
-                        .project
-                        .as_deref()
-                        .unwrap_or(&project_id)
-                        .to_string(),
-                    job_id: "rewind_job".to_string(),
-                    location: None,
-                },
-                configuration: JobConfiguration {
-                    job: JobType::Copy(JobConfigurationTableCopy {
-                        source_table: JobConfigurationSourceTable::SourceTable(TableReference {
-                            project_id: table_ref
-                                .project
-                                .as_deref()
-                                .unwrap_or(&project_id)
-                                .to_string(),
-                            dataset_id: table_ref.dataset.to_string(),
-                            table_id: {
-                                let table = &table_ref.table;
-                                format!("{table}@-{duration_in_secs}").to_string()
-                            },
-                        }),
-                        destination_table: TableReference {
-                            project_id: table_ref
-                                .project
-                                .as_deref()
-                                .unwrap_or(&project_id)
-                                .to_string(),
-                            dataset_id: table_ref.dataset.to_string(),
-                            table_id: table_ref.table.to_string(),
+        let job = Job {
+            job_reference: JobReference {
+                project_id: table_ref
+                    .project
+                    .as_deref()
+                    .unwrap_or(&project_id)
+                    .to_string(),
+                job_id: "rewind_job".to_string(),
+                location: None,
+            },
+            configuration: JobConfiguration {
+                job: JobType::Copy(JobConfigurationTableCopy {
+                    source_table: JobConfigurationSourceTable::SourceTable(TableReference {
+                        project_id: table_ref
+                            .project
+                            .as_deref()
+                            .unwrap_or(&project_id)
+                            .to_string(),
+                        dataset_id: table_ref.dataset.to_string(),
+                        table_id: {
+                            let table = &table_ref.table;
+                            format!("{table}@-{duration_in_secs}").to_string()
                         },
-                        create_disposition: Some(CreateDisposition::CreateIfNeeded),
-                        write_disposition: Some(WriteDisposition::WriteTruncate),
-                        operation_type: Some(OperationType::Copy),
-                        ..Default::default()
                     }),
+                    destination_table: TableReference {
+                        project_id: table_ref
+                            .project
+                            .as_deref()
+                            .unwrap_or(&project_id)
+                            .to_string(),
+                        dataset_id: table_ref.dataset.to_string(),
+                        table_id: table_ref.table.to_string(),
+                    },
+                    create_disposition: Some(CreateDisposition::CreateIfNeeded),
+                    write_disposition: Some(WriteDisposition::WriteTruncate),
+                    operation_type: Some(OperationType::Copy),
                     ..Default::default()
-                },
+                }),
                 ..Default::default()
-            };
-            bq_client
-                .job()
-                .create(&job)
-                .await
-                .map_err(|e| format!("{e:?}"))?; //TODO: add notification about lost partitioning and clustering
-        }
+            },
+            ..Default::default()
+        };
+        bq_client
+            .job()
+            .create(&job)
+            .await
+            .map_err(|e| format!("{e:?}"))?; //TODO: add notification about lost partitioning and clustering
     }
 
     Ok(())

@@ -586,7 +586,7 @@ fn format_number(n: i64) -> String {
     let mut out = String::with_capacity(s.len() + s.len() / 3);
     let start = bytes.len() % 3;
     for (i, b) in bytes.iter().enumerate() {
-        if i > 0 && i >= start && (i - start) % 3 == 0 {
+        if i > 0 && i >= start && (i - start).is_multiple_of(3) {
             out.push(',');
         }
         out.push(*b as char);
