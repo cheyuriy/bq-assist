@@ -29,7 +29,7 @@ fn default_config_dir() -> Result<PathBuf, ConfigurationError> {
 }
 
 fn config_dir() -> Result<PathBuf, ConfigurationError> {
-    if let Ok(dir) = env::var(format!("{}_CONFIG_DIR", env!("CARGO_PKG_NAME"))) {
+    if let Ok(dir) = env::var(format!("{}_CONFIG_DIR", env!("CARGO_PKG_NAME").replace("-", "_").to_uppercase())) {
         let dir = PathBuf::from(dir);
         if dir.exists() {
             Ok(dir)
