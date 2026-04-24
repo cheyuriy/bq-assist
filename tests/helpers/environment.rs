@@ -67,7 +67,8 @@ pub async fn get_test_env() -> Option<&'static TestEnvironment> {
 // are substituted at runtime.
 const FIXTURE_FILES: &[(&str, &str)] = &[
     ("columns_remove", include_str!("../fixtures/columns_remove.sql")),
-    ("clustering", include_str!("../fixtures/clustering.sql")),
+    ("clustering",     include_str!("../fixtures/clustering.sql")),
+    ("partitioning",   include_str!("../fixtures/partitioning.sql")),
 ];
 
 impl TestEnvironment {

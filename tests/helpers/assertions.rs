@@ -58,6 +58,28 @@ pub async fn assert_clustering(env: &TestEnvironment, table: &str, expected: &[&
     );
 }
 
+/// Assert the table's DDL contains (or lacks) a PARTITION BY clause.
+/// Pass `Some(needle)` to check that the clause includes that substring;
+/// pass `None` to assert no partitioning is present.
+pub async fn assert_partitioning(env: &TestEnvironment, table: &str, expected: Option<&str>) {
+    let sql = format!(
+        "SELECT ddl FROM `{}.{}.INFORMATION_SCHEMA.TABLES` WHERE table_name = '{table}'",
+        env.project, env.dataset
+    );
+    let rows = env.run_string_col_query(sql).await;
+    let ddl = rows.first().unwrap_or_else(|| panic!("table `{table}` not found"));
+    match expected {
+        None => assert!(
+            !ddl.to_uppercase().contains("PARTITION BY"),
+            "Expected no PARTITION BY in `{table}` DDL, got:\n{ddl}"
+        ),
+        Some(needle) => assert!(
+            ddl.contains(needle),
+            "Expected `{table}` DDL to contain `{needle}`, got:\n{ddl}"
+        ),
+    }
+}
+
 async fn list_tables(env: &TestEnvironment) -> Vec<String> {
     let sql = format!(
         "SELECT table_name FROM `{}.{}.INFORMATION_SCHEMA.TABLES`",
