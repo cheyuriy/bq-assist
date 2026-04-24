@@ -64,24 +64,23 @@ async fn test_partitioning_lifecycle() {
         .success()
         .stdout(contains("PARTITION BY").and(contains("RANGE_BUCKET")));
 
-    // TODO: uncomment after fixing `table partitioning add ingestion` command
-    // // 8. Replace with ingestion time partitioning (default granularity: day)
-    // Command::cargo_bin("bq-assist")
-    //     .unwrap()
-    //     .args(["table", &table_ref, "partitioning", "add", "ingestion"])
-    //     .assert()
-    //     .success();
+    // 8. Replace with ingestion time partitioning (default granularity: day)
+    Command::cargo_bin("bq-assist")
+        .unwrap()
+        .args(["table", &table_ref, "partitioning", "add", "ingestion"])
+        .assert()
+        .success();
 
-    // // 9. Verify ingestion time partitioning in BigQuery metadata
-    // assert_partitioning(env, TABLE, Some("_PARTITIONDATE")).await;
+    // 9. Verify ingestion time partitioning in BigQuery metadata
+    assert_partitioning(env, TABLE, Some("_PARTITIONTIME")).await;
 
-    // // 10. partitioning list shows the ingestion time clause
-    // Command::cargo_bin("bq-assist")
-    //     .unwrap()
-    //     .args(["table", &table_ref, "partitioning"])
-    //     .assert()
-    //     .success()
-    //     .stdout(contains("PARTITION BY").and(contains("_PARTITIONTIME")));
+    // 10. partitioning list shows the ingestion time clause
+    Command::cargo_bin("bq-assist")
+        .unwrap()
+        .args(["table", &table_ref, "partitioning"])
+        .assert()
+        .success()
+        .stdout(contains("PARTITION BY").and(contains("_PARTITIONTIME")));
 
     // 11. Remove all partitioning
     Command::cargo_bin("bq-assist")

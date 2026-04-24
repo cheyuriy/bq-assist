@@ -79,9 +79,38 @@ impl PartitioningQueries {
         let partitioning_clause = match partitioning {
             Some(bigquery::partitioning::Partitioning::Ingestion(
                 bigquery::partitioning::IngestionTimePartitioning { granularity },
-            )) => Some(format!(
-                "PARTITION BY TIMESTAMP_TRUNC(_PARTITIONTIME, {granularity})"
-            )),
+            )) => {
+                let schema_re = Regex::new(r"(?s)(\([\s\S]*?\n\))").unwrap();
+                let schema_clause = schema_re
+                    .find(ddl)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default();
+                // BigQuery top-level column names are indented with exactly 2 spaces in DDL.
+                // Matching exactly 2 spaces avoids picking up nested STRUCT fields.
+                let col_re = Regex::new(r"(?m)^  (\w+) ").unwrap();
+                let columns_clause = col_re
+                    .captures_iter(&schema_clause)
+                    .map(|caps| caps[1].to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let partitioning_clause =
+                    format!("PARTITION BY TIMESTAMP_TRUNC(_PARTITIONTIME, {granularity})");
+                let env = setup();
+                let template = env
+                    .get_template("table_partitioning_ingestion_addremove.sql")
+                    .unwrap();
+                let context = context! {
+                    bigquery_project => project,
+                    bigquery_dataset => original_dataset,
+                    bigquery_temp_dataset => temp_dataset,
+                    bigquery_table => table,
+                    schema_clause => schema_clause,
+                    partitioning_clause => partitioning_clause,
+                    clustering_clause => clustering_clause,
+                    columns_clause => columns_clause
+                };
+                return template.render(context).unwrap();
+            }
             Some(bigquery::partitioning::Partitioning::Range(
                 bigquery::partitioning::IntegerRangePartitioning {
                     column,
