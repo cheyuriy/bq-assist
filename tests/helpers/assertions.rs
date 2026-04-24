@@ -42,6 +42,22 @@ pub async fn assert_table_not_exists(env: &TestEnvironment, table: &str) {
     );
 }
 
+/// Assert that `table` has exactly the given clustering fields in the given order.
+pub async fn assert_clustering(env: &TestEnvironment, table: &str, expected: &[&str]) {
+    let sql = format!(
+        "SELECT column_name FROM `{}.{}.INFORMATION_SCHEMA.COLUMNS` \
+         WHERE table_name = '{table}' AND clustering_ordinal_position IS NOT NULL \
+         ORDER BY clustering_ordinal_position",
+        env.project, env.dataset
+    );
+    let actual = env.run_string_col_query(sql).await;
+    let expected_vec: Vec<String> = expected.iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        expected_vec, actual,
+        "Clustering mismatch for `{table}`: expected {expected_vec:?}, got {actual:?}"
+    );
+}
+
 async fn list_tables(env: &TestEnvironment) -> Vec<String> {
     let sql = format!(
         "SELECT table_name FROM `{}.{}.INFORMATION_SCHEMA.TABLES`",
