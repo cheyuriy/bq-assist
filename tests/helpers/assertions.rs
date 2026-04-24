@@ -80,6 +80,45 @@ pub async fn assert_partitioning(env: &TestEnvironment, table: &str, expected: O
     }
 }
 
+/// Assert that `table` has a BigQuery option `option_name` whose value contains `expected_fragment`.
+pub async fn assert_table_option(
+    env: &TestEnvironment,
+    table: &str,
+    option_name: &str,
+    expected_fragment: &str,
+) {
+    let sql = format!(
+        "SELECT option_value \
+         FROM `{}.{}.INFORMATION_SCHEMA.TABLE_OPTIONS` \
+         WHERE table_name = '{table}' AND option_name = '{option_name}'",
+        env.project, env.dataset
+    );
+    let rows = env.run_string_col_query(sql).await;
+    let value = rows.first().unwrap_or_else(|| {
+        panic!(
+            "Option `{option_name}` not found for table `{table}` in `{}.{}`",
+            env.project, env.dataset
+        )
+    });
+    assert!(
+        value.contains(expected_fragment),
+        "Option `{option_name}` for `{table}`: expected value to contain `{expected_fragment}`, got: {value}"
+    );
+}
+
+/// Assert that no rows in `table` match `where_clause`.
+pub async fn assert_no_rows_where(env: &TestEnvironment, table: &str, where_clause: &str) {
+    let sql = format!(
+        "SELECT CAST(id AS STRING) FROM `{}.{}.{table}` WHERE {where_clause}",
+        env.project, env.dataset
+    );
+    let rows = env.run_string_col_query(sql).await;
+    assert!(
+        rows.is_empty(),
+        "Expected no rows in `{table}` matching `{where_clause}`, but got: {rows:?}"
+    );
+}
+
 async fn list_tables(env: &TestEnvironment) -> Vec<String> {
     let sql = format!(
         "SELECT table_name FROM `{}.{}.INFORMATION_SCHEMA.TABLES`",

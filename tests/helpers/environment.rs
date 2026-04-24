@@ -69,6 +69,9 @@ const FIXTURE_FILES: &[(&str, &str)] = &[
     ("columns_remove", include_str!("../fixtures/columns_remove.sql")),
     ("clustering",     include_str!("../fixtures/clustering.sql")),
     ("partitioning",   include_str!("../fixtures/partitioning.sql")),
+    ("rename",         include_str!("../fixtures/table_rename.sql")),
+    ("options",        include_str!("../fixtures/table_options.sql")),
+    ("rewind",         include_str!("../fixtures/table_rewind.sql")),
 ];
 
 impl TestEnvironment {
@@ -116,7 +119,7 @@ impl TestEnvironment {
         self.run_ddl(sql).await;
     }
 
-    async fn run_ddl(&self, sql: String) {
+    pub async fn run_ddl(&self, sql: String) {
         let req = QueryRequest { query: sql, ..Default::default() };
         let mut iter = self
             .client
