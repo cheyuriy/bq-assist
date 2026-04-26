@@ -77,6 +77,7 @@ const FIXTURE_FILES: &[(&str, &str)] = &[
     ("options",        include_str!("../fixtures/table_options.sql")),
     ("rewind",         include_str!("../fixtures/table_rewind.sql")),
     ("copy",           include_str!("../fixtures/table_copy.sql")),
+    ("snapshot",       include_str!("../fixtures/table_snapshot.sql")),
 ];
 
 impl TestEnvironment {
