@@ -51,7 +51,7 @@ pub async fn add(
         name
     } else {
         let table_name = table_ref.table.as_str();
-        let ts = chrono::Utc::now().format("%Y_%d_%mT%H_%M_%S").to_string();
+        let ts = chrono::Utc::now().format("%Y_%m_%dT%H_%M_%S").to_string();
         format!("{table_name}_{ts}")
     };
 

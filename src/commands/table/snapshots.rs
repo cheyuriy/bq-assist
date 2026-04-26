@@ -56,7 +56,7 @@ pub async fn add(
     let target_timestamp = if rewind.is_some() {
         Some(now.timestamp() - rewind.map(|d| d.as_secs() as i64).unwrap())
     } else if timestamp.is_some() {
-        Some(now.timestamp() - timestamp.map(|t| t.timestamp()).unwrap())
+        Some(timestamp.map(|t| t.timestamp()).unwrap())
     } else {
         None
     };
@@ -65,10 +65,10 @@ pub async fn add(
         .map(|x| {
             chrono::DateTime::from_timestamp(x, 0)
                 .unwrap()
-                .format("%Y_%d_%mT%H_%M_%S")
+                .format("%Y_%m_%dT%H_%M_%S")
                 .to_string()
         })
-        .unwrap_or(now.format("%Y_%d_%mT%H_%M_%S").to_string());
+        .unwrap_or(now.format("%Y_%m_%dT%H_%M_%S").to_string());
     let snapshot_name = if let Some(name) = name {
         name
     } else {
@@ -91,7 +91,13 @@ pub async fn add(
             &table_ref.dataset
         },
         if target_timestamp.is_some() {
-            Some(snapshot_ts)
+            target_timestamp
+                .map(|x| {
+                    chrono::DateTime::from_timestamp(x, 0)
+                        .unwrap()
+                        .format("%Y-%m-%dT%H:%M:%SZ")
+                        .to_string()
+                })
         } else {
             None
         },
