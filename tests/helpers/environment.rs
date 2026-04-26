@@ -66,8 +66,12 @@ pub async fn get_test_env() -> Option<&'static TestEnvironment> {
 // Fixtures are embedded at compile time; placeholders {project} and {dataset}
 // are substituted at runtime.
 const FIXTURE_FILES: &[(&str, &str)] = &[
-    ("columns_remove", include_str!("../fixtures/columns_remove.sql")),
-    ("clustering",     include_str!("../fixtures/clustering.sql")),
+    ("columns_remove",           include_str!("../fixtures/columns_remove.sql")),
+    ("columns_lifecycle",        include_str!("../fixtures/columns_lifecycle.sql")),
+    ("columns_add_remove",       include_str!("../fixtures/columns_add_remove.sql")),
+    ("columns_rename_lifecycle", include_str!("../fixtures/columns_rename.sql")),
+    ("columns_cast",             include_str!("../fixtures/columns_cast.sql")),
+    ("clustering",         include_str!("../fixtures/clustering.sql")),
     ("partitioning",   include_str!("../fixtures/partitioning.sql")),
     ("rename",         include_str!("../fixtures/table_rename.sql")),
     ("options",        include_str!("../fixtures/table_options.sql")),

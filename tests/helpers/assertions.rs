@@ -119,6 +119,62 @@ pub async fn assert_no_rows_where(env: &TestEnvironment, table: &str, where_clau
     );
 }
 
+/// Assert that `column` in `table` has the given nullability.
+pub async fn assert_column_nullable(env: &TestEnvironment, table: &str, column: &str, nullable: bool) {
+    let sql = format!(
+        "SELECT is_nullable FROM `{}.{}.INFORMATION_SCHEMA.COLUMNS` \
+         WHERE table_name = '{table}' AND column_name = '{column}'",
+        env.project, env.dataset
+    );
+    let rows = env.run_string_col_query(sql).await;
+    let actual = rows
+        .first()
+        .unwrap_or_else(|| panic!("column `{column}` not found in `{table}`"));
+    let expected_str = if nullable { "YES" } else { "NO" };
+    assert_eq!(
+        expected_str,
+        actual.as_str(),
+        "Nullable mismatch for `{table}.{column}`: expected {expected_str}, got {actual}"
+    );
+}
+
+/// Assert whether `column` in `table` has a DEFAULT expression set.
+pub async fn assert_column_has_default(env: &TestEnvironment, table: &str, column: &str, has_default: bool) {
+    let sql = format!(
+        "SELECT IFNULL(column_default, 'NULL') FROM `{}.{}.INFORMATION_SCHEMA.COLUMNS` \
+         WHERE table_name = '{table}' AND column_name = '{column}'",
+        env.project, env.dataset
+    );
+    let rows = env.run_string_col_query(sql).await;
+    let actual = rows
+        .first()
+        .unwrap_or_else(|| panic!("column `{column}` not found in `{table}`"));
+    let actual_has_default = actual != "NULL";
+    assert_eq!(
+        has_default,
+        actual_has_default,
+        "Default mismatch for `{table}.{column}`: expected has_default={has_default}, got column_default={actual}"
+    );
+}
+
+/// Assert that `column` in `table` has the given BigQuery `data_type` (e.g. "STRING", "INT64").
+pub async fn assert_column_type(env: &TestEnvironment, table: &str, column: &str, expected: &str) {
+    let sql = format!(
+        "SELECT data_type FROM `{}.{}.INFORMATION_SCHEMA.COLUMNS` \
+         WHERE table_name = '{table}' AND column_name = '{column}'",
+        env.project, env.dataset
+    );
+    let rows = env.run_string_col_query(sql).await;
+    let actual = rows
+        .first()
+        .unwrap_or_else(|| panic!("column `{column}` not found in `{table}`"));
+    assert_eq!(
+        expected,
+        actual.as_str(),
+        "Type mismatch for `{table}.{column}`: expected {expected}, got {actual}"
+    );
+}
+
 async fn list_tables(env: &TestEnvironment) -> Vec<String> {
     let sql = format!(
         "SELECT table_name FROM `{}.{}.INFORMATION_SCHEMA.TABLES`",
