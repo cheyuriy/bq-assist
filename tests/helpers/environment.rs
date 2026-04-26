@@ -109,6 +109,7 @@ impl TestEnvironment {
 
     /// Recreate a single fixture table by name. Useful for resetting state
     /// between tests that modify the same table within one test file.
+    #[allow(unused)]
     pub async fn recreate_table(&self, fixture_name: &str) {
         let sql_template = FIXTURE_FILES
             .iter()
