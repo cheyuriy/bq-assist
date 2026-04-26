@@ -76,6 +76,7 @@ const FIXTURE_FILES: &[(&str, &str)] = &[
     ("rename",         include_str!("../fixtures/table_rename.sql")),
     ("options",        include_str!("../fixtures/table_options.sql")),
     ("rewind",         include_str!("../fixtures/table_rewind.sql")),
+    ("copy",           include_str!("../fixtures/table_copy.sql")),
 ];
 
 impl TestEnvironment {
@@ -133,7 +134,7 @@ impl TestEnvironment {
         while iter.next().await.unwrap().is_some() {}
     }
 
-    pub(super) async fn run_string_col_query(&self, sql: String) -> Vec<String> {
+    pub async fn run_string_col_query(&self, sql: String) -> Vec<String> {
         let req = QueryRequest { query: sql, ..Default::default() };
         let mut iter = self
             .client
