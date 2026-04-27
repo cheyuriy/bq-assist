@@ -1,189 +1,295 @@
 # bq-assist
 
-A CLI tool for complex BigQuery operations that are either unavailable in the BigQuery console, require raw SQL, or demand many manual steps to accomplish. It is not a full BigQuery client — it focuses specifically on the operations that are difficult or tedious to perform otherwise.
+A Rust CLI for BigQuery operations that are unavailable in the console, require raw SQL, or demand many manual steps. Not a full BigQuery client — focused on the tasks that are otherwise tedious or hard to get right.
 
 ## Why bq-assist?
 
-The BigQuery console covers the basics well, but many real-world tasks are still painful:
+The BigQuery console covers the basics, but real-world DDL/DML workflows are still painful:
 
-- **Partitioning and clustering** can only be set at table creation time in the console — changing them on an existing table requires recreating it manually.
+- **Partitioning and clustering** can only be set at table creation time in the console — modifying them on an existing table requires recreating it manually.
 - **Merging tables** (upsert, diff, union, etc.) requires writing non-trivial MERGE SQL each time.
-- **Column operations** like renaming or casting a type require DDL that is easy to get wrong and tedious to repeat.
-- **Snapshots and copies** are hard to track and restore from without scripting.
-- **Table options and metadata** (labels, expiration, KMS, change history, etc.) can only be set via `ALTER TABLE` SQL.
-- **Query history** for a specific table is buried in INFORMATION_SCHEMA views.
+- **Column operations** — renames, type casts, removals — involve DDL that is easy to get wrong and tedious to repeat.
+- **Snapshots, copies, and restores** are hard to track and operate on without scripting.
+- **Table and dataset metadata** (labels, expiration, KMS, change history, etc.) can only be set via `ALTER TABLE` SQL.
+- **Query history** for a specific table is buried in `INFORMATION_SCHEMA` views.
 
-`bq-assist` wraps all of these into a single CLI with a consistent, discoverable interface.
+`bq-assist` wraps all of these into a consistent, discoverable CLI.
 
 ## Commands
 
-Table references accept `[project.]dataset.table`. Dataset references accept `[project.]dataset`. If a project is omitted, the one from your config is used.
+Table references accept `[project.]dataset.table`. Dataset references accept `[project.]dataset`. If `project` is omitted, the one from your config is used.
 
-### `table <TABLE> ...`
+Run any command with `--help` for the full flag reference.
 
-Operations on a specific table.
+---
 
-| Subcommand | Description |
+### `table <TABLE_REF>`
+
+Operations on a specific table. All subcommands follow the pattern `bq-assist table <TABLE_REF> <subcommand>`.
+
+#### `clustering`
+
+Show, add, or remove clustering fields (up to 4).
+
+> **Cost warning:** Changing clustering requires several full table copies internally. For large tables or on-demand billing this can be expensive — check your table size before running.
+
+```sh
+# Show current clustering fields
+bq-assist table myds.events clustering
+# Cluster by user_id and country
+bq-assist table myds.events clustering add user_id country
+# Remove all clustering
+bq-assist table myds.events clustering remove
+```
+
+#### `partitioning`
+
+Show, add, or remove partitioning. Supports time-unit column (`time`), integer range (`range`), and ingestion-time (`ingestion`) strategies. Partitioning can be added to an existing table — no manual recreation needed.
+
+> **Cost warning:** Changing partitioning requires several full table copies internally. For large tables or on-demand billing this can be expensive — check your table size before running.
+
+```sh
+# Show current partitioning
+bq-assist table myds.events partitioning
+# Partition by a TIMESTAMP column at day granularity
+bq-assist table myds.events partitioning add time event_ts timestamp day
+# Partition by integer range: bucket_id in [0, 1000) with interval 10
+bq-assist table myds.events partitioning add range bucket_id 0 1000 10
+# Partition by ingestion time at day granularity
+bq-assist table myds.events partitioning add ingestion day
+# Remove partitioning
+bq-assist table myds.events partitioning remove
+```
+
+#### `columns`
+
+Show the schema or modify it: add, rename, cast, or remove columns.
+
+```sh
+# Show current schema
+bq-assist table myds.events columns
+# Add a new TIMESTAMP column
+bq-assist table myds.events columns add created_at TIMESTAMP
+# Rename a column (requires a full column scan — see note below)
+bq-assist table myds.events columns rename old_name new_name
+# Cast a column's type in place (see note below)
+bq-assist table myds.events columns cast amount NUMERIC
+# Drop a column
+bq-assist table myds.events columns remove legacy_col
+```
+
+> **`rename` cost warning:** Renaming a column requires a full column scan. For large tables or on-demand billing this can be expensive.
+>
+> **`cast` type support:** When BigQuery natively supports the conversion, the fast built-in path is used. For other pairs, the most logical available cast is applied. Not all type pairs are supported — the command will error if the conversion cannot be performed.
+
+#### `snapshots`
+
+List tracked snapshots, create new ones (with optional time-travel via `--rewind` or `--timestamp`), or delete them. Tracking is implemented by setting two special labels on the created snapshot — this is how `bq-assist` finds and lists them later.
+
+```sh
+# List tracked snapshots
+bq-assist table myds.events snapshots
+# Create a named snapshot of the current state
+bq-assist table myds.events snapshots add before_migration
+# Snapshot the state from 2 hours ago (time-travel)
+bq-assist table myds.events snapshots add --rewind 2h
+# Delete a snapshot by name
+bq-assist table myds.events snapshots remove before_migration
+```
+
+#### `copy`
+
+List tracked copies, create new ones, or delete them. Similar to snapshots but produces a full independent table copy. Tracking is implemented by setting two special labels on the created copy.
+
+```sh
+# List tracked copies
+bq-assist table myds.events copy
+# Create a named full copy of the table
+bq-assist table myds.events copy add pre_deploy
+# Delete a tracked copy
+bq-assist table myds.events copy remove pre_deploy
+```
+
+#### `restore`
+
+Restore the table in-place from time-travel (`--rewind`), a tracked copy (`--copy`), a tracked snapshot (`--snapshot`), or an archive (`--archive`).
+
+> **Note:** Only time-travel restore (`--rewind`) is currently implemented. Restoring from a copy, snapshot, or archive is not yet supported.
+
+```sh
+# Restore to the state 30 minutes ago (time-travel)
+bq-assist table myds.events restore --rewind 30m
+# Restore from a named snapshot
+bq-assist table myds.events restore --snapshot before_migration
+# Restore from a named copy
+bq-assist table myds.events restore --copy pre_deploy
+```
+
+#### `options`
+
+Set any table metadata option. Pass `none` or `null` to unset an option. For the known options listed below, the CLI performs basic value validation, but correctness is not guaranteed — BigQuery is the final authority. Options not in the known list are also accepted and the value is passed through as-is, so future BigQuery options will work without a tool update.
+
+```sh
+# Set a description
+bq-assist table myds.events options description "Click-stream events"
+# Set table expiration date
+bq-assist table myds.events options expiration_timestamp 2027-01-01T00:00:00Z
+# Remove table expiration
+bq-assist table myds.events options expiration_timestamp none
+# Apply multiple labels at once
+bq-assist table myds.events options labels env:prod,team:data
+```
+
+Known options: `expiration_timestamp`, `partition_expiration_days`, `require_partition_filter`, `kms_key_name`, `friendly_name`, `description`, `labels`, `default_rounding_mode`, `enable_change_history`, `max_staleness`, `enable_fine_grained_mutations`, `storage_uri`, `file_format`, `table_format`, `tags`.
+
+#### `queries`
+
+Inspect BigQuery job history for a table. `read` lists queries that read from it; `modify` lists queries that wrote to it. Filter by time window, user, and more.
+
+```sh
+# Queries that read from this table in the last 6 hours
+bq-assist table myds.events queries read --period 6h
+# Queries by a specific user, capped at 20 results
+bq-assist table myds.events queries read --user analyst@example.com --limit 20
+# Queries that modified this table in the last 24 hours
+bq-assist table myds.events queries modify --period 24h
+```
+
+#### `stats`
+
+Show a full report (type, size, partitioning, clustering, options). Add `--with-ddl` to include the table's DDL. The `column` sub-subcommand shows per-column metadata and, with `--deep`, runs a full table scan to produce distributions and histograms.
+
+> **`stats column --deep` cost warning:** A deep scan reads the entire table. For large tables or on-demand billing this can be expensive.
+
+```sh
+# Full table report (type, size, partitioning, clustering, options)
+bq-assist table myds.events stats
+# Same report, also printing the table DDL
+bq-assist table myds.events stats --with-ddl
+# Column metadata without a table scan
+bq-assist table myds.events stats column event_ts
+# Deep column scan with a 20-bucket numeric histogram
+bq-assist table myds.events stats column amount --deep --bins-number 20
+```
+
+#### `archive`
+
+Archive the table once or on a recurring schedule.
+
+> **Not yet implemented.**
+
+```sh
+# Archive the table once
+bq-assist table myds.events archive add
+# Archive every 7 days and delete the source table after each run
+bq-assist table myds.events archive add --frequency 7d --delete-after
+```
+
+#### `rename`
+
+Rename the table.
+
+```sh
+# Rename the table in place
+bq-assist table myds.old_name rename new_name
+```
+
+---
+
+### `dataset <DATASET_REF>`
+
+Dataset-level operations.
+
+```sh
+# Extend the time-travel window to 48 hours
+bq-assist dataset myds options max_time_travel_hours 48
+# Set a dataset description
+bq-assist dataset myds options description "Core analytics dataset"
+# Show dataset statistics
+bq-assist dataset myds stats
+```
+
+Known dataset options: `default_kms_key_name`, `default_partition_expiration_days`, `default_rounding_mode`, `default_table_expiration_days`, `description`, `failover_reservation`, `friendly_name`, `is_case_insensitive`, `labels`, `max_time_travel_hours`, `storage_billing_model`, `tags`.
+
+---
+
+### `merge <LEFT> <RIGHT> [DESTINATION]`
+
+> **Not yet implemented.**
+
+Merge two tables using one of eight patterns. `LEFT` is the destination by default; pass a `DESTINATION` to write results to a different table. All patterns accept `--key` (join column name), `--left-key` / `--right-key` (per-table overrides), and `--left-filter` / `--right-filter` (WHERE-clause predicates).
+
+| Pattern | What it does |
 |---|---|
-| `clustering` | Show current clustering settings |
-| `clustering add <fields...>` | Add or replace clustering fields (up to 4) |
-| `clustering remove` | Remove clustering |
-| `partitioning` | Show current partitioning settings |
-| `partitioning add range <col> <from> <to> <interval>` | Integer range partitioning |
-| `partitioning add time <col> [type] [granularity]` | Time-unit column partitioning |
-| `partitioning add ingestion [granularity]` | Ingestion-time partitioning |
-| `partitioning remove` | Remove partitioning |
-| `columns` | Show current schema |
-| `columns add <name> <type> [default]` | Add a column |
-| `columns rename <name> <new-name>` | Rename a column |
-| `columns cast <name> <type>` | Change a column's type (data is cast in place) |
-| `columns remove <name>` | Delete a column |
-| `restore` | Restore table from time-travel, tracked copy, snapshot, or archive |
-| `snapshots` | List tracked snapshots |
-| `snapshots add [name]` | Create (and track) a snapshot — see flags below |
-| `snapshots remove <name\|id\|*>` | Delete a tracked snapshot |
-| `copy` | List tracked copies |
-| `copy add [name]` | Create (and track) a copy — see flags below |
-| `copy remove <name\|id\|*>` | Delete a tracked copy |
-| `options <option> <value>` | Set a table option (use `NULL` to remove) |
-| `queries read` | List queries that read from this table — see flags below |
-| `queries modify` | List queries that modified this table — see flags below |
-| `stats [--with-ddl]` | Show a full report: type, size, partitioning, clustering, options. Add `--with-ddl` to include the table DDL. |
-| `stats column <name> [flags]` | Show column metadata and optional deep statistics — see flags below |
-| `archive add` | Archive the table (one-time or periodic) |
-| `rename <new-name>` | Rename the table |
-
-> **Known `options` values:** `expiration_timestamp`, `partition_expiration_days`, `require_partition_filter`, `kms_key_name`, `friendly_name`, `description`, `labels`, `default_rounding_mode`, `enable_change_history`, `max_staleness`, `enable_fine_grained_mutations`, `storage_uri`, `file_format`, `table_format`, `tags`
-
-#### `snapshots add [name]`
-
-| Flag | Description |
-|---|---|
-| `--dataset <dataset>` | Dataset to store the snapshot (defaults to the table's dataset) |
-| `--rewind <duration>` | Capture state from N time ago (e.g. `2h`, `30m`) |
-| `--timestamp <datetime>` | Exact snapshot timestamp in RFC3339 format |
-| `--no-track` | Create without tracking (snapshot won't appear in `snapshots` list) |
-
-#### `copy add [name]`
-
-| Flag | Description |
-|---|---|
-| `--dataset <dataset>` | Dataset to store the copy (defaults to the table's dataset) |
-| `--no-track` | Create without tracking |
-
-#### `queries read` / `queries modify`
-
-| Flag | Default | Description |
-|---|---|---|
-| `--period <duration>` | `1h` | Lookback window (e.g. `6h`, `2d`) |
-| `--from <datetime>` | — | Period start in RFC3339 format |
-| `--to <datetime>` | — | Period end in RFC3339 format (`--from` and `--to` together override `--period`) |
-| `--user <email>` | — | Filter by user email |
-| `--limit <N>` | `50` | Maximum results |
-| `--single` *(read only)* | — | Only queries referencing this table exclusively |
-| `--related` *(modify only)* | — | Include indirect references, not just direct writes |
-
-#### `stats column <name>`
-
-Shows column metadata without a table scan (type, nullability, clustering/partitioning role). Pass `--deep` to also run a full table scan and report type-specific statistics: distributions and histograms for numeric and datetime columns, length stats for strings, true/false ratio for booleans. You will be prompted for confirmation before the scan unless `--deep` is passed.
-
-| Flag | Default | Description |
-|---|---|---|
-| `--deep` | — | Skip the cost confirmation prompt |
-| `--bins-number <N>` | `10` | Number of equal-width buckets in numeric distributions |
-| `--time-bins <granularity>` | `month` | Time distribution granularity: `hour`, `day`, `week`, `month`, `year` |
-| `--as-category` | — | Treat the column as categorical: show distinct count and, if there are few enough distinct values, a frequency table. Not available for `BOOL`. |
-| `--distribution-limit <N>` | `20` | Maximum number of distinct values before the frequency table is suppressed |
-
-### `dataset <DATASET> ...`
-
-| Subcommand | Description |
-|---|---|
-| `options <option> <value>` | Set a dataset option (use `NULL` to remove) |
-| `stats` | Show dataset statistics |
-
-> **Known `options` values:** `default_kms_key_name`, `default_partition_expiration_days`, `default_rounding_mode`, `default_table_expiration_days`, `description`, `failover_reservation`, `friendly_name`, `is_case_insensitive`, `is_primary`, `labels`, `max_time_travel_hours`, `primary_replica`, `storage_billing_model`, `tags`
-
-### `merge <LEFT> <RIGHT> [DESTINATION] ...`
-
-Merge two tables using common patterns. `LEFT` is the destination by default; use `DESTINATION` to write results elsewhere.
-
-| Subcommand | Description |
-|---|---|
-| `insert` | Append only new rows from RIGHT (no updates) |
+| `insert` | Append rows from RIGHT that don't exist in LEFT (no updates) |
 | `upsert` | Insert new rows and update existing ones from RIGHT |
 | `update` | Update existing rows from RIGHT, no new inserts |
 | `inner-left` | Keep only LEFT rows whose key exists in RIGHT |
 | `inner-right` | Keep only RIGHT rows whose key exists in LEFT |
-| `diff` | Keep rows whose key appears in only one table (symmetric difference) |
+| `diff` | Keep rows whose key appears in exactly one table (symmetric difference) |
 | `diff-left` | Keep LEFT rows whose key does not exist in RIGHT (LEFT ANTI JOIN) |
 | `diff-right` | Keep RIGHT rows whose key does not exist in LEFT (RIGHT ANTI JOIN) |
 | `union` | Combine all rows from both tables (UNION ALL) |
 
-All merge subcommands accept: `key`, `--left-key`, `--right-key`, `left_filter`, `right_filter`.
+```sh
+# Upsert staging into prod, keyed on id
+bq-assist merge myds.prod myds.staging upsert --key id
+# Append only completed orders not already in target
+bq-assist merge myds.target myds.source insert --key order_id --right-filter "status = 'complete'"
+# Keep rows whose key appears in only one table (symmetric difference)
+bq-assist merge myds.a myds.b diff --key event_id
+```
+
+---
 
 ### `compare <LEFT> <RIGHT>`
 
-Compare two tables and show a diff report. Supports `--left-copy`, `--left-snapshot`, `--right-copy`, `--right-snapshot` to compare against tracked copies or snapshots.
+> **Not yet implemented.**
+
+Compare two tables and show a diff report. Pass `--left-snapshot`, `--left-copy`, `--right-snapshot`, or `--right-copy` to compare against a tracked snapshot or copy.
+
+```sh
+# Compare two tables directly
+bq-assist compare myds.table_v1 myds.table_v2
+# Compare the current state against a pre-migration snapshot
+bq-assist compare myds.events myds.events --left-snapshot before_migration
+```
+
+---
 
 ### `init`
 
-Interactive setup wizard — creates the config file by prompting for required values.
+Interactive setup wizard that creates the config file by prompting for required values.
+
+```sh
+# Launch the interactive setup wizard
+bq-assist init
+```
+
+---
 
 ### `checks`
 
+> **Not yet implemented.**
+
 Run sanity checks on tables.
 
-## Installation
-
-### Pre-built binaries
-
-Download the latest release for your platform from the [Releases](../../releases) page:
-
-| Platform | File |
-|---|---|
-| Linux (x86_64) | `bq-assist-linux-x86_64` |
-| macOS (x86_64) | `bq-assist-macos-x86_64` |
-| macOS (Apple Silicon) | `bq-assist-macos-aarch64` |
-| Windows | `bq-assist-windows-x86_64.exe` |
-
-Make the binary executable (Linux/macOS) and move it somewhere on your `PATH`:
-
 ```sh
-chmod +x bq-assist-linux-x86_64
-mv bq-assist-linux-x86_64 /usr/local/bin/bq-assist
+# Run sanity checks on tables
+bq-assist checks
 ```
 
-### From source
-
-Requires [Rust](https://rustup.rs/) (edition 2024, stable toolchain).
-
-```sh
-git clone <repo-url>
-cd bq-assist
-cargo build --release
-# Binary is at ./target/release/bq-assist
-```
-
-### Via cargo
-
-```sh
-cargo install --git <repo-url> bq-assist
-```
+---
 
 ## Configuration
 
-### Setup wizard
-
-Run `bq-assist init` for an interactive prompt that creates the config file for you.
-
 ### Config file
 
-The config file lives at the platform default config directory under `bq-assist/config.yaml`:
+The config file is read from `config.yaml` in the platform default config directory:
 
 - **Linux:** `~/.config/bq-assist/config.yaml`
-- **macOS:** `~/Library/Application Support/com.example.bq-assist/config.yaml`
-- **Windows:** `%APPDATA%\example\bq-assist\config\config.yaml`
+- **macOS:** `~/Library/Application Support/com.cheyuriydev.bq-assist/config.yaml`
+- **Windows:** `%APPDATA%\cheyuriydev\bq-assist\config\config.yaml`
 
 Override the directory with the `BQ_ASSIST_CONFIG_DIR` environment variable.
 
@@ -194,135 +300,100 @@ temp_dataset: my_temp_dataset
 region: region-eu
 ```
 
-| Field | Required | Description |
+| Field | Default | Description |
 |---|---|---|
-| `service_account_path` | No* | Path to a GCP service account JSON key file |
-| `project` | No* | Default GCP project ID |
-| `temp_dataset` | No | Dataset used for intermediate tables in merge/compare operations |
-| `region` | No | BigQuery region (default: `region-eu`) |
+| `service_account_path` | — | Path to a GCP service account JSON key file |
+| `project` | — | Default GCP project ID |
+| `temp_dataset` | — | Dataset used for intermediate tables in `merge` and `compare` |
+| `region` | `region-eu` | BigQuery region |
 
-*Required unless supplied via environment variables.
+All fields are optional in the config file; they can instead be supplied via environment variables.
 
 ### Environment variables
 
+All config fields can be overridden with environment variables using the `BQ_ASSIST__` prefix (double underscore):
+
 | Variable | Description |
 |---|---|
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to service account JSON (takes priority over `service_account_path`) |
-| `BQ_ASSIST_CONFIG_DIR` | Override config directory path |
-| `BQ_ASSIST__PROJECT` | Override `project` from config |
-| `BQ_ASSIST__TEMP_DATASET` | Override `temp_dataset` from config |
-| `BQ_ASSIST__REGION` | Override `region` from config |
+| `BQ_ASSIST_CONFIG_DIR` | Override the config directory path |
+| `BQ_ASSIST__PROJECT` | Override `project` |
+| `BQ_ASSIST__TEMP_DATASET` | Override `temp_dataset` |
+| `BQ_ASSIST__REGION` | Override `region` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to service account JSON — takes priority over `service_account_path` |
 
-Environment variables use the prefix `BQ_ASSIST__` with double underscore as separator.
+---
+
+## Installation
+
+### Install with Cargo
+
+```sh
+cargo install --git https://github.com/cheyuriy/bq-assist bq-assist
+```
+
+Requires the [Rust toolchain](https://rustup.rs/).
+
+### Build from source
+
+```sh
+git clone https://github.com/cheyuriy/bq-assist
+cd bq-assist
+cargo build --release
+# Binary at ./target/release/bq-assist
+```
+
+### Upgrade
+
+Re-run the same `cargo install` command — it replaces the existing binary in place:
+
+```sh
+cargo install --git https://github.com/cheyuriy/bq-assist bq-assist
+```
+
+---
+
+## Integration Testing
+
+Integration tests run against real BigQuery — they are not mocked. To run them:
+
+1. Copy `.env.test.example` to `.env.test` in the repo root and fill in the values:
+
+```sh
+cp .env.test.example .env.test
+```
+
+| Variable | Required | Description |
+|---|---|---|
+| `BQ_TEST_PROJECT` | Yes | GCP project to run tests against |
+| `BQ_TEST_DATASET` | Yes | Dataset where test tables are created and destroyed |
+| `BQ_TEST_SERVICE_ACCOUNT_PATH` | No* | Path to service account JSON |
+| `BQ_TEST_REGION` | No | BigQuery region (default: `region-eu`) |
+
+*`GOOGLE_APPLICATION_CREDENTIALS` can be used instead.
+
+2. Run tests:
+
+```sh
+cargo test
+```
+
+Tests skip gracefully when `BQ_TEST_PROJECT` is not set, so they are safe to run in environments without BigQuery access.
+
+> **Warning:** All tables in `BQ_TEST_DATASET` are dropped before each test run. Use a dedicated test dataset, never a production one.
+
+---
 
 ## BigQuery Permissions
 
-`bq-assist` executes DDL and DML on your behalf using the configured service account. The service account needs sufficient permissions for the operations you intend to run. At minimum:
+`bq-assist` executes DDL and DML using your configured credentials. The service account (or user credentials) needs sufficient permissions for the operations you intend to use.
 
-- **`bigquery.tables.create`** — create snapshots, copies, restore operations
-- **`bigquery.tables.delete`** — remove snapshots, copies
-- **`bigquery.tables.update`** — alter table options, schema, clustering, partitioning
-- **`bigquery.tables.getData`** / **`bigquery.tables.get`** — read table metadata and schema
-- **`bigquery.jobs.create`** — execute queries
-- **`bigquery.datasets.update`** — alter dataset options
+The predefined IAM roles that cover all operations:
 
-The predefined IAM roles that cover these are:
-
-| Role | Use case |
+| Role | Purpose |
 |---|---|
-| `roles/bigquery.dataEditor` | Read, create, update, and delete tables within datasets |
+| `roles/bigquery.dataEditor` | Create, read, update, and delete tables within datasets |
 | `roles/bigquery.jobUser` | Run jobs (required alongside data roles) |
-| `roles/bigquery.admin` | Full access — simplest for development |
 
-For production, grant the minimum set of permissions required for your workflows.
+`roles/bigquery.admin` covers everything and is the simplest option for development. For production, grant only the permissions required for your workflows.
 
-## Examples
-
-```sh
-# Run the setup wizard
-bq-assist init
-
-# View the current schema of a table
-bq-assist table my_dataset.my_table columns
-
-# Add a new column
-bq-assist table my_dataset.my_table columns add created_at TIMESTAMP
-
-# Rename a column
-bq-assist table my_dataset.my_table columns rename old_name new_name
-
-# Change a column's type
-bq-assist table my_dataset.my_table columns cast amount NUMERIC
-
-# Add day-level partitioning on an existing table
-bq-assist table my_dataset.my_table partitioning add time event_time timestamp day
-
-# Add clustering on two fields
-bq-assist table my_dataset.my_table clustering add user_id country
-
-# Remove clustering
-bq-assist table my_dataset.my_table clustering remove
-
-# Set table description
-bq-assist table my_dataset.my_table options description "My important table"
-
-# Set table expiration
-bq-assist table my_dataset.my_table options expiration_timestamp 2027-01-01T00:00:00Z
-
-# Remove table expiration
-bq-assist table my_dataset.my_table options expiration_timestamp NULL
-
-# Create a tracked snapshot
-bq-assist table my_dataset.my_table snapshots add before_migration
-
-# Create a snapshot rewinding 2 hours
-bq-assist table my_dataset.my_table snapshots add --rewind 2h
-
-# List snapshots
-bq-assist table my_dataset.my_table snapshots
-
-# Restore from a named snapshot
-bq-assist table my_dataset.my_table restore --snapshot before_migration
-
-# Restore using time-travel (rewind 30 minutes)
-bq-assist table my_dataset.my_table restore --rewind 30m
-
-# Create a tracked copy
-bq-assist table my_dataset.my_table copy add pre_deploy
-
-# Upsert from a staging table into production
-bq-assist merge my_dataset.prod_table my_dataset.staging_table upsert id
-
-# Append only new rows (insert missing)
-bq-assist merge my_dataset.target my_dataset.source insert id
-
-# Show a full stats report for a table
-bq-assist table my_dataset.my_table stats
-
-# Show stats report including DDL
-bq-assist table my_dataset.my_table stats --with-ddl
-
-# Show column statistics with a full deep scan
-bq-assist table my_dataset.my_table stats column event_time --deep
-
-# Show queries that read from a table in the last 6 hours
-bq-assist table my_dataset.my_table queries read --period 6h
-
-# Show queries made by a specific user
-bq-assist table my_dataset.my_table queries read --user analyst@example.com
-
-# Show queries that modified a table in the last day
-bq-assist table my_dataset.my_table queries modify --period 24h
-
-# Compare two tables
-bq-assist compare my_dataset.table_v1 my_dataset.table_v2
-
-# Compare current table state against a tracked snapshot
-bq-assist compare my_dataset.my_table my_dataset.my_table --left-snapshot before_migration
-
-# Set dataset time-travel window to 48 hours
-bq-assist dataset my_dataset options max_time_travel_hours 48
-
-# Rename a table
-bq-assist table my_dataset.old_name rename new_name
-```
+Specific permissions used: `bigquery.tables.create`, `bigquery.tables.delete`, `bigquery.tables.update`, `bigquery.tables.get`, `bigquery.jobs.create`, `bigquery.datasets.update`.

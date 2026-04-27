@@ -20,7 +20,7 @@ pub struct AppConfig {
 
 fn default_config_dir() -> Result<PathBuf, ConfigurationError> {
     if let Some(proj_dirs) =
-        directories::ProjectDirs::from("com", "example", env!("CARGO_PKG_NAME"))
+        directories::ProjectDirs::from("com", "cheyuriydev", env!("CARGO_PKG_NAME"))
     {
         Ok(proj_dirs.config_dir().to_path_buf())
     } else {
