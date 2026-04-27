@@ -175,6 +175,47 @@ pub async fn assert_column_type(env: &TestEnvironment, table: &str, column: &str
     );
 }
 
+/// Assert that the test dataset has option `option_name` whose value contains `expected_fragment`.
+pub async fn assert_dataset_option(
+    env: &TestEnvironment,
+    option_name: &str,
+    expected_fragment: &str,
+) {
+    let sql = format!(
+        "SELECT REPLACE(option_value, '\"', '') \
+         FROM `{}.INFORMATION_SCHEMA.SCHEMATA_OPTIONS` \
+         WHERE catalog_name = '{}' AND schema_name = '{}' AND option_name = '{option_name}'",
+        env.region, env.project, env.dataset
+    );
+    let rows = env.run_string_col_query(sql).await;
+    let value = rows.first().unwrap_or_else(|| {
+        panic!(
+            "Option `{option_name}` not found for dataset `{}` in project `{}`",
+            env.dataset, env.project
+        )
+    });
+    assert!(
+        value.contains(expected_fragment),
+        "Dataset option `{option_name}`: expected value to contain `{expected_fragment}`, got: {value}"
+    );
+}
+
+/// Assert that the test dataset does NOT have option `option_name` set.
+pub async fn assert_dataset_option_absent(env: &TestEnvironment, option_name: &str) {
+    let sql = format!(
+        "SELECT option_value \
+         FROM `{}.INFORMATION_SCHEMA.SCHEMATA_OPTIONS` \
+         WHERE catalog_name = '{}' AND schema_name = '{}' AND option_name = '{option_name}'",
+        env.region, env.project, env.dataset
+    );
+    let rows = env.run_string_col_query(sql).await;
+    assert!(
+        rows.is_empty(),
+        "Expected dataset option `{option_name}` to be unset for `{}`, but got: {:?}",
+        env.dataset, rows
+    );
+}
+
 async fn list_tables(env: &TestEnvironment) -> Vec<String> {
     let sql = format!(
         "SELECT table_name FROM `{}.{}.INFORMATION_SCHEMA.TABLES`",

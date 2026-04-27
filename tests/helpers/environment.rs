@@ -10,6 +10,7 @@ pub struct TestEnvironment {
     pub client: Client,
     pub project: String,
     pub dataset: String,
+    pub region: String,
     _config_dir: TempDir,
 }
 
@@ -55,7 +56,7 @@ pub async fn get_test_env() -> Option<&'static TestEnvironment> {
                 .await
                 .expect("failed to create BQ client");
 
-            let env = TestEnvironment { client, project, dataset, _config_dir: config_dir };
+            let env = TestEnvironment { client, project, dataset, region, _config_dir: config_dir };
             env.reset_dataset().await;
             Some(env)
         })
