@@ -422,22 +422,26 @@ impl TableQueries {
     ) -> String {
         let env = setup();
 
-        let value_clause = match option {
-            bigquery::options::TableOption::ExpirationTimestamp => format!("TIMESTAMP \"{value}\""),
-            bigquery::options::TableOption::Labels | bigquery::options::TableOption::Tags => {
-                let pairs: Vec<String> = value
-                    .split(',')
-                    .filter_map(|pair| {
-                        let (k, v) = pair.split_once(':')?;
-                        Some(format!("(\"{}\",\"{}\")", k, v))
-                    })
-                    .collect();
+        let value_clause = if value.eq_ignore_ascii_case("none") || value.eq_ignore_ascii_case("null") {
+            value.to_string()
+        } else {
+            match option {
+                bigquery::options::TableOption::ExpirationTimestamp => format!("TIMESTAMP \"{value}\""),
+                bigquery::options::TableOption::Labels | bigquery::options::TableOption::Tags => {
+                    let pairs: Vec<String> = value
+                        .split(',')
+                        .filter_map(|pair| {
+                            let (k, v) = pair.split_once(':')?;
+                            Some(format!("(\"{}\",\"{}\")", k, v))
+                        })
+                        .collect();
 
-                format!("[{}]", pairs.join(","))
+                    format!("[{}]", pairs.join(","))
+                }
+                bigquery::options::TableOption::Description => format!("\"{value}\""),
+                bigquery::options::TableOption::Unknown(s) => s.clone(),
+                _ => value.to_string(),
             }
-            bigquery::options::TableOption::Description => format!("\"{value}\""),
-            bigquery::options::TableOption::Unknown(s) => s.clone(),
-            _ => value.to_string(),
         };
 
         let template = env.get_template("table_option.sql").unwrap();
@@ -479,21 +483,25 @@ impl DatasetQueries {
     ) -> String {
         let env = setup();
 
-        let value_clause = match option {
-            bigquery::options::DatasetOption::Labels | bigquery::options::DatasetOption::Tags => {
-                let pairs: Vec<String> = value
-                    .split(',')
-                    .filter_map(|pair| {
-                        let (k, v) = pair.split_once(':')?;
-                        Some(format!("(\"{}\",\"{}\")", k, v))
-                    })
-                    .collect();
+        let value_clause = if value.eq_ignore_ascii_case("none") || value.eq_ignore_ascii_case("null") {
+            value.to_string()
+        } else {
+            match option {
+                bigquery::options::DatasetOption::Labels | bigquery::options::DatasetOption::Tags => {
+                    let pairs: Vec<String> = value
+                        .split(',')
+                        .filter_map(|pair| {
+                            let (k, v) = pair.split_once(':')?;
+                            Some(format!("(\"{}\",\"{}\")", k, v))
+                        })
+                        .collect();
 
-                format!("[{}]", pairs.join(","))
+                    format!("[{}]", pairs.join(","))
+                }
+                bigquery::options::DatasetOption::Description => format!("\"{value}\""),
+                bigquery::options::DatasetOption::Unknown(s) => s.clone(),
+                _ => value.to_string(),
             }
-            bigquery::options::DatasetOption::Description => format!("\"{value}\""),
-            bigquery::options::DatasetOption::Unknown(s) => s.clone(),
-            _ => value.to_string(),
         };
 
         let template = env.get_template("dataset_option.sql").unwrap();

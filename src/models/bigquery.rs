@@ -320,7 +320,8 @@ pub mod options {
 
     impl TableOption {
         pub fn validate_value(&self, value: &str) -> Result<(), String> {
-            if value.to_lowercase() == "null" {
+            let lc = value.to_lowercase();
+            if lc == "null" || lc == "none" {
                 return Ok(());
             }
 
@@ -444,7 +445,8 @@ pub mod options {
 
     impl DatasetOption {
         pub fn validate_value(&self, value: &str) -> Result<(), String> {
-            if value.to_lowercase() == "null" {
+            let lc = value.to_lowercase();
+            if lc == "null" || lc == "none" {
                 return Ok(());
             }
 
