@@ -215,10 +215,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "table {table_ref} archive add {archive_type:?} {frequency:?} {start_time:?} {delete_after:?}"
                     );
                     // TODO: implement archive add command
+                    unimplemented!("Archive add command not implemented yet");
                 }
                 None => {
                     println!("table {table_ref} archive");
                     // TODO: implement archive command
+                    unimplemented!("Archive command not implemented yet");
                 }
             },
 
@@ -259,6 +261,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "merge {left_ref} {right_ref} {destination_ref:?} diff {key:?} {left_key:?} {right_key:?} {left_filter:?} {right_filter:?}"
                 );
                 // TODO: implement merge diff command
+                unimplemented!("Merge diff command not implemented yet");
             }
             cli::MergeSubcommands::DiffLeft {
                 key,
@@ -271,6 +274,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "merge {left_ref} {right_ref} {destination_ref:?} diff_left {key:?} {left_key:?} {right_key:?} {left_filter:?} {right_filter:?}"
                 );
                 // TODO: implement merge diff left command
+                unimplemented!("Merge diff left command not implemented yet");
             }
             cli::MergeSubcommands::DiffRight {
                 key,
@@ -283,6 +287,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "merge {left_ref} {right_ref} {destination_ref:?} diff_right {key:?} {left_key:?} {right_key:?} {left_filter:?} {right_filter:?}"
                 );
                 // TODO: implement merge diff right command
+                unimplemented!("Merge diff right command not implemented yet");
             }
             cli::MergeSubcommands::InnerLeft {
                 key,
@@ -295,6 +300,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "merge {left_ref} {right_ref} {destination_ref:?} inner_left {key:?} {left_key:?} {right_key:?} {left_filter:?} {right_filter:?}"
                 );
                 // TODO: implement merge inner left command
+                unimplemented!("Merge inner left command not implemented yet");
             }
             cli::MergeSubcommands::InnerRight {
                 key,
@@ -307,6 +313,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "merge {left_ref} {right_ref} {destination_ref:?} inner_right {key:?} {left_key:?} {right_key:?} {left_filter:?} {right_filter:?}"
                 );
                 // TODO: implement merge inner right command
+                unimplemented!("Merge inner right command not implemented yet");
             }
             cli::MergeSubcommands::Insert {
                 key,
@@ -319,6 +326,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "merge {left_ref} {right_ref} {destination_ref:?}insert {key:?} {left_key:?} {right_key:?} {left_filter:?} {right_filter:?}"
                 );
                 // TODO: implement merge insert command
+                unimplemented!("Merge insert command not implemented yet");
             }
             cli::MergeSubcommands::Union {
                 key,
@@ -331,6 +339,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "merge {left_ref} {right_ref} {destination_ref:?} union {key:?} {left_key:?} {right_key:?} {left_filter:?} {right_filter:?}"
                 );
                 // TODO: implement merge union command
+                unimplemented!("Merge union command not implemented yet");
             }
             cli::MergeSubcommands::Update {
                 key,
@@ -343,6 +352,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "merge {left_ref} {right_ref} {destination_ref:?} update {key:?} {left_key:?} {right_key:?} {left_filter:?} {right_filter:?}"
                 );
                 // TODO: implement merge update command
+                unimplemented!("Merge update command not implemented yet");
             }
             cli::MergeSubcommands::Upsert {
                 key,
@@ -355,6 +365,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "merge {left_ref} {right_ref} {destination_ref:?} upsert {key:?} {left_key:?} {right_key:?} {left_filter:?} {right_filter:?}"
                 );
                 // TODO: implement merge upsert command
+                unimplemented!("Merge upsert command not implemented yet");
             }
         },
 
@@ -370,11 +381,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "compare {left_ref} {left_copy:?} {left_snapshot:?} {right_ref} {right_copy:?} {right_snapshot:?}"
             );
             // TODO: implement compare command
+            unimplemented!("Compare command not implemented yet");
         }
 
         cli::Commands::Checks => {
             println!("checks");
             // TODO: implement checks command
+            unimplemented!("Checks command not implemented yet");
         }
 
         cli::Commands::Init => {
